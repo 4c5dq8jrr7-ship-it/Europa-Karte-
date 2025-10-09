@@ -1,41 +1,74 @@
-<script>
-  // Karte starten (Europa-Zentriert)
-  const map = L.map('map').setView([51.1657, 10.4515], 5);
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pelletpreise Karte</title>
 
-  // Hintergrundkarte (OpenStreetMap)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
-  }).addTo(map);
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-  // Farbskala für Preise (grün = günstig, rot = teuer)
-  function getColor(preis) {
-    return preis > 300 ? 'red' :
-           preis > 200 ? 'orange' :
-           preis > 100 ? 'yellow' :
-           preis > 0   ? 'green' :
-                         'gray';
-  }
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
 
-  // 🔹 Hier trägst du deine Orte & Preise ein:
-  const orte = [
-    { name: "Berlin",    lat: 52.5200, lon: 13.4050, preis: 250 },
-    { name: "München",   lat: 48.1374, lon: 11.5755, preis: 320 },
-    { name: "Hamburg",   lat: 53.5511, lon: 9.9937,  preis: 280 },
-    { name: "Köln",      lat: 50.9375, lon: 6.9603,  preis: 260 },
-    { name: "Wien",      lat: 48.2082, lon: 16.3738, preis: 290 },
-    { name: "Paris",     lat: 48.8566, lon: 2.3522,  preis: 310 }
-  ];
+  <div id="map"></div>
 
-  // 🔸 Marker auf die Karte setzen
-  orte.forEach(o => {
-    L.circleMarker([o.lat, o.lon], {
-      radius: 10,
-      color: getColor(o.preis),
-      fillColor: getColor(o.preis),
-      fillOpacity: 0.8
-    })
-    .bindTooltip(`<b>${o.name}</b><br>Preis: ${o.preis} €`, { sticky: true })
-    .addTo(map);
-  });
-</script>
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // Karte erstellen (zentriert auf Deutschland)
+    const map = L.map('map').setView([51.2, 10.5], 6);
+
+    // Hintergrundkarte (OpenStreetMap)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // Orte mit Preisen
+    const orte = [
+      { 
+        name: "Neuss", 
+        lat: 51.2042, lon: 6.6879,
+        preis3t: "1.118,14 €",
+        preis6t: "2.136,75 €"
+      },
+      { 
+        name: "Oranienbaum", 
+        lat: 51.7997, lon: 12.4044,
+        preis3t: "1.081,46 €",
+        preis6t: "2.068,79 €"
+      }
+    ];
+
+    // Punkte auf Karte setzen (gleiche Farbe)
+    orte.forEach(o => {
+      L.circleMarker([o.lat, o.lon], {
+        radius: 10,
+        color: "#0033cc",         // Rahmenfarbe (blau)
+        fillColor: "#3399ff",     // Füllfarbe
+        fillOpacity: 0.8
+      })
+      .bindTooltip(
+        `<b>${o.name}</b><br>` +
+        `3 t: ${o.preis3t}<br>` +
+        `6 t: ${o.preis6t}`,
+        { sticky: true }
+      )
+      .addTo(map);
+    });
+  </script>
+
+</body>
+</html>
