@@ -27,7 +27,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // Karte erstellen (zentriert auf Deutschland)
+    // Karte starten (zentriert auf Deutschland)
     const map = L.map('map').setView([51.2, 10.5], 6);
 
     // Hintergrundkarte (OpenStreetMap)
@@ -36,34 +36,29 @@
       attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
     }).addTo(map);
 
-    // Orte mit Preisen
+    // Orte mit Preisen und Farben
     const orte = [
-      { 
-        name: "Neuss", 
-        lat: 51.2042, lon: 6.6879,
-        preis3t: "1.118,14 €",
-        preis6t: "2.136,75 €"
-      },
-      { 
-        name: "Oranienbaum", 
-        lat: 51.7997, lon: 12.4044,
-        preis3t: "1.081,46 €",
-        preis6t: "2.068,79 €"
-      }
+      // 🟢 Grüne Orte (260 €)
+      { name: "Hengersberg", lat: 48.7759, lon: 13.0411, preis: 260, farbe: "green" },
+      { name: "Wunsiedel", lat: 50.0386, lon: 12.0031, preis: 260, farbe: "green" },
+      { name: "Falkenberg", lat: 49.3868, lon: 12.4111, preis: 260, farbe: "green" },
+
+      // 🔴 Rote Orte (285 €)
+      { name: "Ottersberg", lat: 53.1095, lon: 9.1376, preis: 285, farbe: "red" },
+      { name: "Erndtebrück", lat: 50.9861, lon: 8.2589, preis: 285, farbe: "red" },
+      { name: "Olsberg", lat: 51.3555, lon: 8.4878, preis: 285, farbe: "red" }
     ];
 
-    // Punkte auf Karte setzen (gleiche Farbe)
+    // Punkte auf Karte setzen
     orte.forEach(o => {
       L.circleMarker([o.lat, o.lon], {
         radius: 10,
-        color: "#0033cc",         // Rahmenfarbe (blau)
-        fillColor: "#3399ff",     // Füllfarbe
+        color: o.farbe,
+        fillColor: o.farbe,
         fillOpacity: 0.8
       })
       .bindTooltip(
-        `<b>${o.name}</b><br>` +
-        `3 t: ${o.preis3t}<br>` +
-        `6 t: ${o.preis6t}`,
+        `<b>${o.name}</b><br>Preis: ${o.preis} €`,
         { sticky: true }
       )
       .addTo(map);
