@@ -36,25 +36,36 @@
       attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
     }).addTo(map);
 
-    // Orte mit Preisen und Farben
-    const orte = [
-      // 🟢 Grüne Orte (260 €)
-      { name: "Hengersberg", lat: 48.7759, lon: 13.0411, preis: 260, farbe: "green" },
-      { name: "Wunsiedel", lat: 50.0386, lon: 12.0031, preis: 260, farbe: "green" },
-      { name: "Falkenberg", lat: 49.3868, lon: 12.4111, preis: 260, farbe: "green" },
+    // Funktion zur automatischen Farbbestimmung nach Preis
+    function getColor(preis) {
+      if (preis <= 260) {
+        return "green";     // günstig
+      } else if (preis > 260 && preis < 285) {
+        return "orange";    // mittel
+      } else {
+        return "red";       // teuer (≥ 285)
+      }
+    }
 
-      // 🔴 Rote Orte (285 €)
-      { name: "Ottersberg", lat: 53.1095, lon: 9.1376, preis: 285, farbe: "red" },
-      { name: "Erndtebrück", lat: 50.9861, lon: 8.2589, preis: 285, farbe: "red" },
-      { name: "Olsberg", lat: 51.3555, lon: 8.4878, preis: 285, farbe: "red" }
+    // 🔹 Orte mit ihren Preisen (du kannst beliebig viele hinzufügen)
+    const orte = [
+      { name: "Hengersberg", lat: 48.7759, lon: 13.0411, preis: 260 },
+      { name: "Wunsiedel", lat: 50.0386, lon: 12.0031, preis: 260 },
+      { name: "Falkenberg", lat: 49.3868, lon: 12.4111, preis: 260 },
+      { name: "Ottersberg", lat: 53.1095, lon: 9.1376, preis: 285 },
+      { name: "Erndtebrück", lat: 50.9861, lon: 8.2589, preis: 285 },
+      { name: "Olsberg", lat: 51.3555, lon: 8.4878, preis: 285 },
+      { name: "Neuss", lat: 51.2042, lon: 6.6879, preis: 270 },
+      { name: "Oranienbaum", lat: 51.7997, lon: 12.4044, preis: 250 }
     ];
 
-    // Punkte auf Karte setzen
+    // Punkte auf Karte setzen (automatische Farbe)
     orte.forEach(o => {
+      const farbe = getColor(o.preis);
       L.circleMarker([o.lat, o.lon], {
         radius: 10,
-        color: o.farbe,
-        fillColor: o.farbe,
+        color: farbe,
+        fillColor: farbe,
         fillOpacity: 0.8
       })
       .bindTooltip(
@@ -63,6 +74,24 @@
       )
       .addTo(map);
     });
+
+    // 🔸 Optionale Legende unten rechts
+    const legend = L.control({position: "bottomright"});
+    legend.onAdd = function () {
+      const div = L.DomUtil.create("div", "info legend");
+      div.innerHTML = `
+        <b>Preis-Farben</b><br>
+        <i style="background:green;width:12px;height:12px;display:inline-block;margin-right:4px;"></i> ≤ 260 €<br>
+        <i style="background:orange;width:12px;height:12px;display:inline-block;margin-right:4px;"></i> 260 – 285 €<br>
+        <i style="background:red;width:12px;height:12px;display:inline-block;margin-right:4px;"></i> ≥ 285 €
+      `;
+      div.style.background = "white";
+      div.style.padding = "6px";
+      div.style.borderRadius = "4px";
+      div.style.fontSize = "14px";
+      return div;
+    };
+    legend.addTo(map);
   </script>
 
 </body>
