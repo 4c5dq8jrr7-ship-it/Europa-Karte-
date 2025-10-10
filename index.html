@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Preiskarte</title>
+  <title>Pelletwerke – Europa Preiskarte</title>
 
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     html, body { height: 100%; margin: 0; }
@@ -15,10 +14,9 @@
       border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,.12); font: 14px/1.2 system-ui, Arial, sans-serif;
     }
     .legend { bottom: 12px; right: 12px; }
-    .legend i { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align: -2px; }
+    .legend i { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:-2px; }
     .panel { top: 12px; left: 12px; max-width: 360px }
     .panel details summary { cursor: pointer; font-weight: 600 }
-    .panel code { background:#f6f8fa; padding:2px 4px; border-radius:4px }
     .fail { color:#b00020; }
     .ok { color:#2e7d32; }
     button.small { padding:6px 10px; border-radius:6px; border:1px solid #ddd; background:#f5f5f5; cursor:pointer }
@@ -29,8 +27,7 @@
 
   <div id="map"></div>
 
-  <!-- Interaktive Filter-Legende -->
-  <div class="legend" id="filterBox">
+  <div class="legend">
     <b>Filter Farben</b><br>
     <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
     <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
@@ -38,14 +35,13 @@
     <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label>
   </div>
 
-  <!-- Statuspanel -->
   <div class="panel">
     <details open>
       <summary>Hinweise & Status</summary>
       <div style="margin-top:6px">
         • Preise änderst du unten in <code>werke</code> (nur Feld <code>preis</code>).<br>
-        • Koordinaten werden automatisch gesucht & im Browser gespeichert.<br>
-        • Fehlt ein Ort, erscheint er unten – dann den Ortsnamen präziser machen (z. B. „…, Deutschland“).<br>
+        • Koordinaten werden automatisch gesucht & gespeichert.<br>
+        • Wenn ein Ort fehlt, steht er hier als „Fehlt“ – dann den Ortsnamen präziser machen (z. B. „…, Österreich“).<br>
       </div>
       <div style="margin-top:8px">
         <button class="small" id="retryBtn">Fehlende Orte neu suchen</button>
@@ -55,27 +51,26 @@
     </details>
   </div>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // === Karte starten ===
-    const map = L.map('map').setView([50, 12], 5);
+    // === Europa-Karte ===
+    const map = L.map('map').setView([50, 12], 5); // Mitteleuropa-Ansicht
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
+      minZoom: 4, maxZoom: 10,
       attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    // === Farblogik ===
+    // === Farbskala ===
     function colorForPrice(preis) {
-      if (!preis || preis <= 0) return '#9e9e9e'; // Grau: kein Preis
+      if (!preis || preis <= 0) return '#9e9e9e'; // grau
       if (preis <= 260) return 'green';
       if (preis < 285) return 'orange';
       return 'red';
     }
 
-    // === Geocoding mit Cache ===
-    const CACHE_KEY = 'geoCachePellets_v3';
+    // === Geocache + Geocoding ===
+    const CACHE_KEY = 'geoCachePellets_v4';
     const geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
     async function geocode(query) {
       if (geoCache[query]) return geoCache[query];
@@ -92,8 +87,7 @@
     }
     function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-    // === Firmenliste (PREISE hier eintragen!) ===
-    // Tipp: Für bessere Treffer sind präzisere Ortsangaben drin (z. B. „…, Deutschland“).
+    // === Daten: alle Firmen (mit deinen Preisen) ===
     const werke = [
       { firma: "LEAG Pellets GmbH", ort: "Wismar, Deutschland", preis: 235 },
       { firma: "HVW Hobelspanverarbeitung GmbH & Co. KG", ort: "Kritzow, Deutschland", preis: 0 },
@@ -110,13 +104,13 @@
       { firma: "Mercer Torgau GmbH & Co. KG", ort: "Torgau, Deutschland", preis: 0 },
       { firma: "Overbeck Bioenergie GmbH", ort: "Hattingen, Deutschland", preis: 0 },
       { firma: "Josef Baust Holzbetrieb GmbH", ort: "Eslohe-Bremke, Deutschland", preis: 0 },
-      { firma: "Pieper Holz GmbH", ort: "Olsberg-Helmeringhausen, Deutschland", preis: 285 },
+      { firma: "Pieper Holz GmbH", ort: "Olsberg-Assinghausen, Deutschland", preis: 285 },
       { firma: "Prinz-Eugen Energiepark GmbH", ort: "Bad Arolsen, Deutschland", preis: 0 },
       { firma: "Euroline GmbH & Co. KG", ort: "Göttingen, Deutschland", preis: 0 },
       { firma: "J. Freytag GmbH & Co. KG", ort: "Warburg, Deutschland", preis: 0 },
       { firma: "Josef Schmelter GmbH", ort: "Lennestadt, Deutschland", preis: 0 },
       { firma: "HS Timber Productions GmbH", ort: "Kodersdorf, Deutschland", preis: 0 },
-      { firma: "WestPellets GmbH & Co. KG", ort: "Titz-Ameln, Deutschland", preis: 0 },   /* Amwln -> Ameln */
+      { firma: "WestPellets GmbH & Co. KG", ort: "Titz-Ameln, Deutschland", preis: 0 },
       { firma: "NRW Pellets GmbH", ort: "Erndtebrück, Deutschland", preis: 260 },
       { firma: "Ante-Holz GmbH", ort: "Bromskirchen, Deutschland", preis: 0 },
       { firma: "Danpower Pelletproduktion GmbH", ort: "Osterfeld, Deutschland", preis: 0 },
@@ -144,26 +138,25 @@
       { firma: "Binderholz Deutschland GmbH", ort: "Kösching, Deutschland", preis: 0 },
       { firma: "Bayerwald Pellet GmbH & Co. KG", ort: "Regen, Deutschland", preis: 0 },
       { firma: "Sägewerke Schwaiger GmbH & Co. KG", ort: "Hengersberg, Deutschland", preis: 260 },
+      { firma: "Haas Fertigbau GmbH", ort: "Falkenberg, 84326, Deutschland", preis: 230 },
       { firma: "Holzwerke Weinzierl GmbH", ort: "Vilshofen an der Donau, Deutschland", preis: 0 },
       { firma: "EC Bioenergie GmbH", ort: "Kehl, Deutschland", preis: 0 },
       { firma: "JRS Holzenergie HEW GmbH & Co. KG", ort: "Herbrechtingen, Deutschland", preis: 0 },
       { firma: "Pelletwerk Ziertheim GmbH & Co. KG", ort: "Ziertheim, Deutschland", preis: 0 },
       { firma: "Pfeifer Holz GmbH", ort: "Unterbernbach, Deutschland", preis: 0 },
-      { firma: "Haas Fertigbau GmbH", ort: "84326 Falkenberg, Deutschland", preis: 230 },
       { firma: "Glecher Pellet-Produktions GmbH", ort: "Pfarrkirchen, Deutschland", preis: 0 },
       { firma: "Ante-Biopell GmbH & Co. KG", ort: "Empfingen, Deutschland", preis: 0 },
       { firma: "JRS Holzenergie HEW GmbH & Co. KG", ort: "Ettenheim, Deutschland", preis: 0 },
-      { firma: "Holzwerke Gebr. Schneider GmbH", ort: "Meßkirch, Deutschland", preis: 0 },   /* "Scheider" -> "Schneider" */
+      { firma: "Holzwerke Gebr. Schneider GmbH", ort: "Meßkirch, Deutschland", preis: 0 },
       { firma: "EC Bioenergie GmbH", ort: "Dotternhausen, Deutschland", preis: 0 },
       { firma: "Schnellinger KG", ort: "Buchenbach, Deutschland", preis: 0 },
       { firma: "Schnellinger KG", ort: "Krauchenwies, Deutschland", preis: 0 },
       { firma: "Holzwerke Gebr. Schneider GmbH", ort: "Eberhardzell, Deutschland", preis: 0 },
-      { firma: "Dorr-Biomassehof GmbH & Co. KG", ort: "Fuchstal-Asch, Deutschland", preis: 0 }, /* Ash -> Asch */
+      { firma: "Dorr-Biomassehof GmbH & Co. KG", ort: "Fuchstal-Asch, Deutschland", preis: 0 },
       { firma: "Brennpunkt Energie GmbH", ort: "Ruderatshofen, Deutschland", preis: 0 }
-      { firma: "EHO Pellets", ort: "Rohrbach an der lafnitz, Österreich", preis: 230 }
     ];
 
-    // === Layergruppen (für Filter) ===
+    // === Layergruppen für Filter ===
     const gruppeGruen = L.layerGroup().addTo(map);
     const gruppeOrange = L.layerGroup().addTo(map);
     const gruppeRot = L.layerGroup().addTo(map);
@@ -180,7 +173,6 @@
         try {
           let coords = geoCache[query];
           if (!coords && !onlyMissing) {
-            // freundlich zu Nominatim: ~1 req/s
             coords = await geocode(query);
             await delay(1000);
           }
@@ -197,49 +189,30 @@
             else if (farbe === 'orange') marker.addTo(gruppeOrange);
             else if (farbe === 'red') marker.addTo(gruppeRot);
             else marker.addTo(gruppeGrau);
-
-            // optional: in Statusliste anzeigen
-            const p = document.createElement('div');
-            p.innerHTML = `✅ <span class="ok">${w.ort}</span> (${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)})`;
-            statusBox.appendChild(p);
-
-          } else {
-            const p = document.createElement('div');
-            p.innerHTML = `❌ <span class="fail">Fehlt:</span> ${w.ort}`;
-            statusBox.appendChild(p);
           }
         } catch (e) {
           const p = document.createElement('div');
-          p.innerHTML = `❌ <span class="fail">Fehler:</span> ${w.ort} – ${e.message}`;
+          p.innerHTML = `❌ Fehler: ${w.ort} – ${e.message}`;
           statusBox.appendChild(p);
         }
       }
     }
 
-    // Filter (Checkboxen)
+    // === Filterfunktion ===
     function updateLayers() {
-      if (document.getElementById('chkGruen').checked) map.addLayer(gruppeGruen);
-      else map.removeLayer(gruppeGruen);
-
-      if (document.getElementById('chkOrange').checked) map.addLayer(gruppeOrange);
-      else map.removeLayer(gruppeOrange);
-
-      if (document.getElementById('chkRot').checked) map.addLayer(gruppeRot);
-      else map.removeLayer(gruppeRot);
-
-      if (document.getElementById('chkGrau').checked) map.addLayer(gruppeGrau);
-      else map.removeLayer(gruppeGrau);
+      if (document.getElementById('chkGruen').checked) map.addLayer(gruppeGruen); else map.removeLayer(gruppeGruen);
+      if (document.getElementById('chkOrange').checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
+      if (document.getElementById('chkRot').checked) map.addLayer(gruppeRot); else map.removeLayer(gruppeRot);
+      if (document.getElementById('chkGrau').checked) map.addLayer(gruppeGrau); else map.removeLayer(gruppeGrau);
     }
     document.addEventListener('change', e => { if (e.target.type === 'checkbox') updateLayers(); });
 
-    // Buttons
     document.getElementById('retryBtn').addEventListener('click', () => buildMap(true));
     document.getElementById('clearCacheBtn').addEventListener('click', () => {
       localStorage.removeItem(CACHE_KEY);
-      alert('Geocache gelöscht. Seite neu laden und erneut suchen.');
+      alert('Geocache gelöscht. Seite neu laden.');
     });
 
-    // Start
     buildMap();
   </script>
 </body>
