@@ -43,8 +43,8 @@
       <summary>Hinweise & Status</summary>
       <div style="margin-top:6px">
         • Preise änderst du nur in der Liste <code>werke</code> im Code (Feld <code>preis</code>).<br>
-        • Koordinaten werden automatisch gesucht und in <code>localStorage</code> gespeichert.<br>
-        • Wenn ein Ort nicht gefunden wird, siehst du ihn unten als „Fehlt“. Dann bitte den Ortsnamen konkretisieren (z.&nbsp;B. „Olsberg-Assinghausen, DE“).
+        • Koordinaten werden automatisch gesucht und gespeichert.<br>
+        • Wenn ein Ort nicht gefunden wird, siehst du ihn unten als „Fehlt“. Dann bitte den Ortsnamen genauer machen (z. B. „Olsberg-Assinghausen, DE“).
       </div>
       <div style="margin-top:8px">
         <button class="small" id="retryBtn">Fehlende Geokoordinaten neu suchen</button>
@@ -58,39 +58,33 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // === 1) Karte starten ===
+    // === Karte starten ===
     const map = L.map('map').setView([51.2, 10.5], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    // === 2) Farblogik nach Preis ===
+    // === Farblogik nach Preis ===
     function colorForPrice(preis) {
-      if (!preis || preis <= 0) return '#9e9e9e'; // grau: kein Preis
+      if (!preis || preis <= 0) return '#9e9e9e'; // grau = kein Preis
       if (preis <= 260) return 'green';
       if (preis < 285) return 'orange';
       return 'red';
     }
 
-    // === 3) Geocoding-Helfer (mit Cache & Throttle) ===
+    // === Geocoding mit Cache ===
     const CACHE_KEY = 'geocache_pellets_v1';
     const geocache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
 
     async function geocode(query) {
       if (geocache[query]) return geocache[query];
-      // Nominatim: bitte throttlen (max. ~1 Anfrage/Sek.)
       const url = new URL('https://nominatim.openstreetmap.org/search');
       url.searchParams.set('format', 'json');
       url.searchParams.set('q', query);
-      url.searchParams.set('addressdetails', '0');
       url.searchParams.set('limit', '1');
       url.searchParams.set('accept-language', 'de');
-
-      const res = await fetch(url.toString(), {
-        headers: { 'User-Agent': 'Pelletkarte/1.0 (Kontakt: example@example.com)' }
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const res = await fetch(url);
       const data = await res.json();
       if (data && data.length) {
         const { lat, lon } = data[0];
@@ -101,11 +95,9 @@
       throw new Error('Kein Treffer');
     }
 
-    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+    function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-    // === 4) DEINE DATEN: Firmen, Orte, Preis ===
-    // Preis: hier trägst du nur die Zahl ein (z.B. 260). Lass 0, wenn noch kein Preis.
-    // Tipp: Wenn Ort nicht gefunden wird, füge „, Deutschland“ hinzu (oder das Bundesland).
+    // === Pelletwerke-Liste (nur Preise ändern!) ===
     const werke = [
       { firma: "LEAG Pellets GmbH", ort: "Wismar, Deutschland", preis: 0 },
       { firma: "HVW Hobelspanverarbeitung GmbH & Co. KG", ort: "Kritzow, Deutschland", preis: 0 },
@@ -128,7 +120,7 @@
       { firma: "J. Freytag GmbH & Co. KG", ort: "Warburg, Deutschland", preis: 0 },
       { firma: "Josef Schmelter GmbH", ort: "Lennestadt, Deutschland", preis: 0 },
       { firma: "HS Timber Productions GmbH", ort: "Kodersdorf, Deutschland", preis: 0 },
-      { firma: "WestPellets GmbH & Co. KG", ort: "Titz-Ameln, Deutschland", preis: 0 },     /* Amwln -> Ameln vermutet */
+      { firma: "WestPellets GmbH & Co. KG", ort: "Titz-Ameln, Deutschland", preis: 0 },
       { firma: "NRW Pellets GmbH", ort: "Erndtebrück, Deutschland", preis: 0 },
       { firma: "Ante-Holz GmbH", ort: "Bromskirchen, Deutschland", preis: 0 },
       { firma: "Danpower Pelletproduktion GmbH", ort: "Osterfeld, Deutschland", preis: 0 },
@@ -160,79 +152,65 @@
       { firma: "EC Bioenergie GmbH", ort: "Kehl, Deutschland", preis: 0 },
       { firma: "JRS Holzenergie HEW GmbH & Co. KG", ort: "Herbrechtingen, Deutschland", preis: 0 },
       { firma: "Pelletwerk Ziertheim GmbH & Co. KG", ort: "Ziertheim, Deutschland", preis: 0 },
-      { firma: "Pfeifer Holz GmbH", ort: "Unterbernbach (Aichach-Friedberg), Deutschland", preis: 0 },
+      { firma: "Pfeifer Holz GmbH", ort: "Unterbernbach, Deutschland", preis: 0 },
       { firma: "Haas Fertigbau GmbH", ort: "Falkenberg (Niederbayern), Deutschland", preis: 0 },
       { firma: "Glecher Pellet-Produktions GmbH", ort: "Pfarrkirchen, Deutschland", preis: 0 },
       { firma: "Ante-Biopell GmbH & Co. KG", ort: "Empfingen, Deutschland", preis: 0 },
       { firma: "JRS Holzenergie HEW GmbH & Co. KG", ort: "Ettenheim, Deutschland", preis: 0 },
-      { firma: "Holzwerke Gebr. Schneider GmbH", ort: "Meßkirch, Deutschland", preis: 0 },   /* Name korrigiert: Schneider */
+      { firma: "Holzwerke Gebr. Schneider GmbH", ort: "Meßkirch, Deutschland", preis: 0 },
       { firma: "EC Bioenergie GmbH", ort: "Dotternhausen, Deutschland", preis: 0 },
       { firma: "Schnellinger KG", ort: "Buchenbach, Deutschland", preis: 0 },
       { firma: "Schnellinger KG", ort: "Krauchenwies, Deutschland", preis: 0 },
       { firma: "Holzwerke Gebr. Schneider GmbH", ort: "Eberhardzell, Deutschland", preis: 0 },
-      { firma: "Dorr-Biomassehof GmbH & Co. KG", ort: "Fuchstal-Asch, Deutschland", preis: 0 }, /* Ash -> Asch */
-      { firma: "Brennpunkt Energie GmbH", ort: "Ruderatshofen, Deutschland", preis: 0 }         /* Ruderatshof -> Ruderatshofen vermutet */
+      { firma: "Dorr-Biomassehof GmbH & Co. KG", ort: "Fuchstal-Asch, Deutschland", preis: 0 },
+      { firma: "Brennpunkt Energie GmbH", ort: "Ruderatshofen, Deutschland", preis: 0 }
     ];
 
-    // === 5) Marker zeichnen ===
+    // === Karte zeichnen ===
     const statusBox = document.getElementById('status');
-    function logStatus(html) {
-      const p = document.createElement('div'); p.innerHTML = html; statusBox.appendChild(p);
-    }
-
     let markers = [];
 
     async function buildMap(onlyMissing = false) {
-      // Bestehende Marker entfernen
       markers.forEach(m => map.removeLayer(m));
       markers = [];
       statusBox.innerHTML = '';
 
-      let idx = 0;
       for (const w of werke) {
-        idx++;
-
-        const query = `${w.ort}`;
+        const query = w.ort;
         try {
           let coords = geocache[query];
           if (!coords && !onlyMissing) {
-            logStatus(`🔎 (${idx}/${werke.length}) Suche: <b>${w.ort}</b> …`);
             coords = await geocode(query);
-            await delay(1100); // Nominatim freundlich behandeln
-          } else if (!coords && onlyMissing) {
-            logStatus(`⏭️  Übersprungen (weiterhin fehlend): <span class="fail">${w.ort}</span>`);
-            continue;
+            await delay(1000);
           }
-
           if (coords) {
-            const preis = w.preis || 0;
-            const color = colorForPrice(preis);
+            const farbe = colorForPrice(w.preis);
+            const preisText = w.preis > 0
+              ? `<b>${w.preis} €</b>`
+              : `<i style="color:gray;">kein Preis eingetragen</i>`;
             const marker = L.circleMarker([coords.lat, coords.lon], {
-              radius: 8, color, fillColor: color, fillOpacity: 0.85
-            }).bindTooltip(
-              `<b>${w.firma}</b><br>${w.ort}<br>` +
-              (preis > 0 ? `Preis: ${preis} €` : `Preis: <i>noch nicht eingetragen</i>`),
-              { sticky: true }
-            ).addTo(map);
+              radius: 8, color: farbe, fillColor: farbe, fillOpacity: 0.8
+            }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${preisText}`, { sticky: true }).addTo(map);
             markers.push(marker);
-            logStatus(`✅ Gefunden: <span class="ok">${w.ort}</span> (${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)})`);
           } else {
-            logStatus(`❌ <span class="fail">Fehlt:</span> ${w.ort}`);
+            const p = document.createElement('div');
+            p.innerHTML = `❌ <span class="fail">Fehlt:</span> ${w.ort}`;
+            statusBox.appendChild(p);
           }
         } catch (e) {
-          logStatus(`❌ <span class="fail">Fehler:</span> ${w.ort} – ${e.message}`);
+          const p = document.createElement('div');
+          p.innerHTML = `❌ <span class="fail">Fehler:</span> ${w.ort} – ${e.message}`;
+          statusBox.appendChild(p);
         }
       }
     }
 
-    // Buttons
     document.getElementById('retryBtn').addEventListener('click', () => buildMap(true));
     document.getElementById('clearCacheBtn').addEventListener('click', () => {
       localStorage.removeItem(CACHE_KEY);
-      alert('Geocache gelöscht. Lade die Seite neu oder klicke „Fehlende Geokoordinaten neu suchen“.');
+      alert('Geocache gelöscht. Lade die Seite neu.');
     });
 
-    // Start
     buildMap();
   </script>
 </body>
