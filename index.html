@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pelletwerke – Europa Preiskarte</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     html,body{height:100%;margin:0}
     #map{width:100%;height:100%}
@@ -35,9 +36,8 @@
   <details open>
     <summary>Hinweise & Status</summary>
     <div style="margin-top:6px">
-      • Preise änderst du unten in <code>werke</code> (nur <code>preis</code>).<br>
+      • Preise werden automatisch aus Google Sheets geladen.<br>
       • Koordinaten werden automatisch gesucht & gespeichert.<br>
-      • Du kannst auch Orte in Polen, Tschechien, Belgien oder den Niederlanden eintragen (z. B. „Kraków, Polen“).<br>
     </div>
     <div style="margin-top:8px">
       <button class="small" id="retryBtn">Fehlende Orte neu suchen</button>
@@ -49,147 +49,108 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const map=L.map('map').setView([51,11],5);
+const map = L.map('map').setView([51,11],5);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  minZoom:4,maxZoom:10,attribution:'&copy; OpenStreetMap'
+  minZoom:4, maxZoom:10, attribution: '&copy; OpenStreetMap'
 }).addTo(map);
 
-function colorForPrice(p){if(!p||p<=0)return'#9e9e9e';if(p<=260)return'green';if(p<285)return'orange';return'red';}
-const CACHE_KEY='geoCachePellets_EU';
-const geoCache=JSON.parse(localStorage.getItem(CACHE_KEY)||'{}');
-async function geocode(q){
-  if(geoCache[q])return geoCache[q];
-  const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&accept-language=de`);
-  const d=await r.json();
-  if(d&&d.length){const{lat,lon}=d[0];geoCache[q]={lat:+lat,lon:+lon};
-    localStorage.setItem(CACHE_KEY,JSON.stringify(geoCache));return geoCache[q];}
-  throw new Error('kein Treffer für '+q);
+function colorForPrice(p) {
+  if (!p || p <= 0) return '#9e9e9e';
+  if (p <= 260) return 'green';
+  if (p < 285) return 'orange';
+  return 'red';
 }
-function delay(ms){return new Promise(r=>setTimeout(r,ms));}
-
-// === Firmen ===
-const werke=[
-   { firma: "LEAG Pellets GmbH", ort: "23966 Wismar, Deutschland", preis: 235 },
-      { firma: "HVW Hobelspanverarbeitung GmbH & Co. KG", ort: "23970 Kritzow-Hornstorf, Deutschland", preis: 265 },
-      { firma: "Hanse-Pellet GmbH & Co. KG", ort: "21244 Buchholz, Deutschland", preis: 0 },
-      { firma: "Holtmeyer Pellet GmbH", ort: "28870 Ottersberg-Narthauen, Deutschland", preis: 250 },
-      { firma: "Holzkontor und Pelletierwerk Schwedt GmbH", ort: "16303 Schwedt, Deutschland", preis: 0 },
-      { firma: "Joh. Brandenburg GmbH & Co. KG", ort: "49424 Goldenstedt, Deutschland", preis: 0 },
-      { firma: "1 Heiz Pellets AG", ort:  "16225 Eberswalde, Deutschland", preis: 0 },
-      { firma: "Biopellet Magdeburg GmbH & Co. KG", ort: "39126 Magdeburg, Deutschland", preis: 0 },
-      { firma: "PROPELL GmbH", ort: "Oranienbaum, Deutschland", preis: 0 },
-      { firma: "1 Heiz Pellets AG", ort: "03205 Calau, Deutschland", preis: 0 },
-      { firma: "EC Bioenergie GmbH", ort: "37181 Hardegsen, Deutschland", preis: 0 },
-      { firma: "Ante-Holz GmbH", ort: "06536 Südharz, Deutschland", preis: 0 },
-      { firma: "Mercer Torgau GmbH & Co. KG", ort: "04860 Torgau, Deutschland", preis: 0 },
-      { firma: "Overbeck Bioenergie GmbH", ort: "45525 Hattingen, Deutschland", preis: 0 },
-      { firma: "Josef Baust Holzbetrieb GmbH", ort: "Eslohe-Bremke, Deutschland", preis: 0 },
-      { firma: "Pieper Holz GmbH", ort: "59939 Olsberg-Helmeringhausen, Deutschland", preis: 285 },
-      { firma: "Prinz-Eugen Energiepark GmbH", ort: "Bad Arolsen, Deutschland", preis: 0 },
-      { firma: "Euroline GmbH & Co. KG", ort: "37079 Göttingen, Deutschland", preis: 0 },
-      { firma: "J. Freytag GmbH & Co. KG", ort: "34414 Warburg, Deutschland", preis: 0 },
-      { firma: "Josef Schmelter GmbH", ort: "5738 Lennestadt, Deutschland", preis: 0 },
-      { firma: "HS Timber Productions GmbH", ort: "Kodersdorf, Deutschland", preis: 0 },
-      { firma: "WestPellets GmbH & Co. KG", ort: "Titz-Ameln, Deutschland", preis: 0 },
-      { firma: "NRW Pellets GmbH", ort: "57339 Erndtebrück, Deutschland", preis: 260 },
-      { firma: "Ante-Holz GmbH", ort: "Bromskirchen, Deutschland", preis: 0 },
-      { firma: "Danpower Pelletproduktion GmbH", ort: "Osterfeld, Deutschland", preis: 0 },
-      { firma: "PROPELL GmbH", ort: "Löbau, Deutschland", preis: 0 },
-      { firma: "Holzwerke von Roje GmbH & Co. KG", ort: "Oberhonnefeld-Gierend, Deutschland", preis: 0 },
-      { firma: "Holzindustrie Hassel GmbH", ort: "Stockum-Püschen, Deutschland", preis: 0 },
-      { firma: "Westerwälder Holzpellets GmbH", ort: "Langenbach, Deutschland", preis: 0 },
-      { firma: "Pfeifer Holz GmbH", ort: "Lauterbach (Hessen), Deutschland", preis: 0 },
-      { firma: "EPH EnergiePellets Hosenfeld GmbH", ort: "Hosenfeld-Hainzell, Deutschland", preis: 0 },
-      { firma: "HVT Hobelspanverarbeitung GmbH", ort: "Dittersdorf, Deutschland", preis: 0 },
-      { firma: "EC Bioenergie GmbH", ort: "54497 Morbach, Deutschland", preis: 0 },
-      { firma: "EVO - Energieversorgung Offenbach AG", ort: "63075 Offenbach am Main, Deutschland", preis: 0 },
-      { firma: "Frankenpellets GmbH & Co. KG", ort: "Stadtsteinach, Deutschland", preis: 0 },
-      { firma: "WUN Bioenergie GmbH", ort: "Wunsiedel, Deutschland", preis: 0 },
-      { firma: "Ziegler Holding GmbH", ort: "Pressath, Deutschland", preis: 0 },
-      { firma: "Gregor Ziegler GmbH", ort: "Plößberg, Deutschland", preis: 0 },
-      { firma: "Rettenmeier Holzindustrie Ramstein GmbH", ort: "Ramstein-Miesenbach, Deutschland", preis: 0 },
-      { firma: "EC Bioenergie GmbH", ort: "Mudau, Deutschland", preis: 0 },
-      { firma: "Span-Service Holzlogistik GmbH", ort: "Edenkoben, Deutschland", preis: 0 },
-      { firma: "Oberplatz Pellet GmbH", ort: "Michelsneukirchen, Deutschland", preis: 0 },
-      { firma: "Allspan German Horse Produktion GmbH", ort: "Karlsruhe, Deutschland", preis: 0 },
-      { firma: "Junginger Naturholzwerke GmbH", ort: "Murrhardt, Deutschland", preis: 0 },
-      { firma: "Xaver Bullinger GmbH & Co. KG", ort: "Abtsgmünd, Deutschland", preis: 0 },
-      { firma: "Ladenburger GmbH", ort: "Bopfingen-Aufhausen, Deutschland", preis: 0 },
-      { firma: "Binderholz Deutschland GmbH", ort: "Kösching, Deutschland", preis: 0 },
-      { firma: "Bayerwald Pellet GmbH & Co. KG", ort: "Regen, Deutschland", preis: 0 },
-      { firma: "Sägewerke Schwaiger GmbH & Co. KG", ort: "Hengersberg, Deutschland", preis: 260 },
-      { firma: "Haas Fertigbau GmbH", ort: "Falkenberg, 84326, Deutschland", preis: 230 },
-      { firma: "Holzwerke Weinzierl GmbH", ort: "Vilshofen an der Donau, Deutschland", preis: 0 },
-      { firma: "EC Bioenergie GmbH", ort: "Kehl, Deutschland", preis: 0 },
-      { firma: "JRS Holzenergie HEW GmbH & Co. KG", ort: "Herbrechtingen, Deutschland", preis: 0 },
-      { firma: "Pelletwerk Ziertheim GmbH & Co. KG", ort: "Ziertheim, Deutschland", preis: 0 },
-      { firma: "Pfeifer Holz GmbH", ort: "Unterbernbach, Deutschland", preis: 0 },
-      { firma: "Glecher Pellet-Produktions GmbH", ort: "Pfarrkirchen, Deutschland", preis: 0 },
-      { firma: "Ante-Biopell GmbH & Co. KG", ort: "Empfingen, Deutschland", preis: 0 },
-      { firma: "JRS Holzenergie HEW GmbH & Co. KG", ort: "Ettenheim, Deutschland", preis: 0 },
-      { firma: "Holzwerke Gebr. Schneider GmbH", ort: "Meßkirch, Deutschland", preis: 0 },
-      { firma: "EC Bioenergie GmbH", ort: "Dotternhausen, Deutschland", preis: 0 },
-      { firma: "Schnellinger KG", ort: "Buchenbach, Deutschland", preis: 0 },
-      { firma: "Schnellinger KG", ort: "Krauchenwies, Deutschland", preis: 0 },
-      { firma: "EHO Pellets", ort: "Rohrbach an der Lafnitz, Österreich", preis: 230 },
-      { firma: "Holzwerke Gebr. Schneider GmbH", ort: "Eberhardzell, Deutschland", preis: 0 },
-      { firma: "Dorr-Biomassehof GmbH & Co. KG", ort: "Fuchstal-Asch, Deutschland", preis: 0 },
-      { firma: "Brennpunkt Energie GmbH", ort: "Ruderatshofen, Deutschland", preis: 0 },
-      { firma: "Mayr-Melnhof Holz Paskov", ort: "739 43 Staríc, Tschechien", preis: 680 },
-      { firma: "Groupe Francois", ort: "Thimister, Belgien", preis: 245 },
-      { firma: "Scierie Germain Mougenot", ort: "88290 Saulxures sur Moselotte, Frankreich", preis: 240 }
-];
+const CACHE_KEY = 'geoCachePellets_EU';
+const geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+async function geocode(q) {
+  if (geoCache[q]) return geoCache[q];
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&accept-language=de`);
+  const d = await r.json();
+  if (d && d.length) {
+    const { lat, lon } = d[0];
+    geoCache[q] = { lat: +lat, lon: +lon };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(geoCache));
+    return geoCache[q];
+  }
+  throw new Error('kein Treffer für ' + q);
+}
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // === Kunden ===
 const kunden = [
-  { name: "Maier & Korduletsch Energie GmbH", ort: "94036 Passau , Deutschland" },
+  { name: "Kunde Meier", ort: "München, Deutschland" },
+  { name: "Kunde Müller", ort: "Hamburg, Deutschland" }
 ];
-
-// Blauer Dreiecks-Marker (SVG)
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
            <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
          </svg>`,
-  iconAnchor: [12, 22],
-  popupAnchor: [0, -20]
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
 });
 
-// === Layer-Gruppen ===
-const gruppeGruen=L.layerGroup().addTo(map),
-      gruppeOrange=L.layerGroup().addTo(map),
-      gruppeRot=L.layerGroup().addTo(map),
-      gruppeGrau=L.layerGroup().addTo(map),
-      kundenGruppe=L.layerGroup().addTo(map);
+const gruppeGruen = L.layerGroup().addTo(map),
+      gruppeOrange = L.layerGroup().addTo(map),
+      gruppeRot = L.layerGroup().addTo(map),
+      gruppeGrau = L.layerGroup().addTo(map),
+      kundenGruppe = L.layerGroup().addTo(map);
+const statusBox = document.getElementById('status');
 
-const statusBox=document.getElementById('status');
+let werke = [];
 
-async function buildMap(onlyMissing=false){
-  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g=>g.clearLayers());
-  statusBox.innerHTML='';
-  
+// === Google Sheets einlesen ===
+// Deine Sheet-ID ist: 1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs
+const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+
+Papa.parse(sheetUrl, {
+  download: true,
+  header: true,
+  complete: function(results) {
+    werke = results.data.map(row => ({
+      firma: row.firma,
+      ort: row.ort,
+      preis: parseFloat(row.preis)
+    }));
+    buildMap();
+  },
+  error: function(err) {
+    console.error("Fehler beim Laden der Tabelle:", err);
+  }
+});
+
+async function buildMap(onlyMissing = false) {
+  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
+  statusBox.innerHTML = '';
+
   // Firmen-Marker
-  for(const w of werke){
-    const q=w.ort;
-    try{
-      let c=geoCache[q];
-      if(!c&&!onlyMissing){c=await geocode(q);await delay(1000);}
-      if(c){
-        const f=colorForPrice(w.preis);
-        const t=w.preis>0?`<b>${w.preis} €</b>`:`<i style="color:gray">kein Preis</i>`;
-        const m=L.circleMarker([c.lat,c.lon],{radius:8,color:f,fillColor:f,fillOpacity:.85})
-          .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`,{sticky:true});
-        if(f==='green')m.addTo(gruppeGruen);
-        else if(f==='orange')m.addTo(gruppeOrange);
-        else if(f==='red')m.addTo(gruppeRot);
-        else m.addTo(gruppeGrau);
-      }else{
-        const p=document.createElement('div');
-        p.textContent='❌ Fehlt: '+w.ort;statusBox.appendChild(p);
+  for (const w of werke) {
+    if (!w.firma || !w.ort) continue;
+    try {
+      let c = geoCache[w.ort];
+      if (!c && !onlyMissing) {
+        c = await geocode(w.ort);
+        await delay(1000);
       }
-    }catch(e){
-      const p=document.createElement('div');
-      p.textContent='❌ Fehler: '+w.ort+' – '+e.message;statusBox.appendChild(p);
+      if (c) {
+        const f = colorForPrice(w.preis);
+        const t = w.preis > 0 ? `<b>${w.preis} €</b>` : `<i style="color:gray">kein Preis</i>`;
+        const m = L.circleMarker([c.lat, c.lon], {
+          radius: 8,
+          color: f,
+          fillColor: f,
+          fillOpacity: 0.85
+        }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true });
+
+        if (f === 'green') m.addTo(gruppeGruen);
+        else if (f === 'orange') m.addTo(gruppeOrange);
+        else if (f === 'red') m.addTo(gruppeRot);
+        else m.addTo(gruppeGrau);
+      }
+    } catch (e) {
+      const p = document.createElement('div');
+      p.textContent = '❌ Fehler: ' + w.ort + ' – ' + e.message;
+      statusBox.appendChild(p);
     }
   }
 
@@ -197,34 +158,39 @@ async function buildMap(onlyMissing=false){
   for (const k of kunden) {
     try {
       let c = geoCache[k.ort];
-      if (!c && !onlyMissing) { c = await geocode(k.ort); await delay(1000); }
+      if (!c && !onlyMissing) {
+        c = await geocode(k.ort);
+        await delay(1000);
+      }
       if (c) {
         const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
           .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true });
         marker.addTo(kundenGruppe);
-      } else {
-        const p=document.createElement('div');
-        p.textContent='❌ Fehlt: '+k.ort;statusBox.appendChild(p);
       }
     } catch (e) {
-      const p=document.createElement('div');
-      p.textContent='❌ Fehler: '+k.ort+' – '+e.message;statusBox.appendChild(p);
+      const p = document.createElement('div');
+      p.textContent = '❌ Fehler: ' + k.ort + ' – ' + e.message;
+      statusBox.appendChild(p);
     }
   }
 }
 
-// === Filter ===
-function updateLayers(){
-  if(chkGruen.checked)map.addLayer(gruppeGruen);else map.removeLayer(gruppeGruen);
-  if(chkOrange.checked)map.addLayer(gruppeOrange);else map.removeLayer(gruppeOrange);
-  if(chkRot.checked)map.addLayer(gruppeRot);else map.removeLayer(gruppeRot);
-  if(chkGrau.checked)map.addLayer(gruppeGrau);else map.removeLayer(gruppeGrau);
-  if(chkKunden.checked)map.addLayer(kundenGruppe);else map.removeLayer(kundenGruppe);
+// Filter
+function updateLayers() {
+  if (chkGruen.checked) map.addLayer(gruppeGruen); else map.removeLayer(gruppeGruen);
+  if (chkOrange.checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
+  if (chkRot.checked) map.addLayer(gruppeRot); else map.removeLayer(gruppeRot);
+  if (chkGrau.checked) map.addLayer(gruppeGrau); else map.removeLayer(gruppeGrau);
+  if (chkKunden.checked) map.addLayer(kundenGruppe); else map.removeLayer(kundenGruppe);
 }
-document.addEventListener('change',e=>{if(e.target.type==='checkbox')updateLayers();});
-retryBtn.onclick=()=>buildMap(true);
-clearCacheBtn.onclick=()=>{localStorage.removeItem(CACHE_KEY);alert('Geocache gelöscht – neu laden!');};
-buildMap();
+document.addEventListener('change', e => {
+  if (e.target.type === 'checkbox') updateLayers();
+});
+retryBtn.onclick = () => buildMap(true);
+clearCacheBtn.onclick = () => {
+  localStorage.removeItem(CACHE_KEY);
+  alert('Geocache gelöscht – neu laden!');
+};
 </script>
 </body>
 </html>
