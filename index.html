@@ -27,7 +27,8 @@
   <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
   <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
   <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
-  <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label>
+  <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label><br>
+  <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label>
 </div>
 
 <div class="panel">
@@ -68,7 +69,7 @@ function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 
 // === Firmen ===
 const werke=[
-  { firma: "LEAG Pellets GmbH", ort: "23966 Wismar, Deutschland", preis: 235 },
+   { firma: "LEAG Pellets GmbH", ort: "23966 Wismar, Deutschland", preis: 235 },
       { firma: "HVW Hobelspanverarbeitung GmbH & Co. KG", ort: "23970 Kritzow-Hornstorf, Deutschland", preis: 265 },
       { firma: "Hanse-Pellet GmbH & Co. KG", ort: "21244 Buchholz, Deutschland", preis: 0 },
       { firma: "Holtmeyer Pellet GmbH", ort: "28870 Ottersberg-Narthauen, Deutschland", preis: 250 },
@@ -139,15 +140,35 @@ const werke=[
       { firma: "Scierie Germain Mougenot", ort: "88290 Saulxures sur Moselotte, Frankreich", preis: 240 }
 ];
 
+// === Kunden ===
+const kunden = [
+  { name: "Maier & Korduletsch Energie GmbH", ort: "94036 Passau , Deutschland" },
+];
+
+// Blauer Dreiecks-Marker (SVG)
+const blauesDreieck = L.divIcon({
+  className: "custom-triangle",
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12, 22],
+  popupAnchor: [0, -20]
+});
+
+// === Layer-Gruppen ===
 const gruppeGruen=L.layerGroup().addTo(map),
       gruppeOrange=L.layerGroup().addTo(map),
       gruppeRot=L.layerGroup().addTo(map),
-      gruppeGrau=L.layerGroup().addTo(map);
+      gruppeGrau=L.layerGroup().addTo(map),
+      kundenGruppe=L.layerGroup().addTo(map);
+
 const statusBox=document.getElementById('status');
 
 async function buildMap(onlyMissing=false){
-  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau].forEach(g=>g.clearLayers());
+  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g=>g.clearLayers());
   statusBox.innerHTML='';
+  
+  // Firmen-Marker
   for(const w of werke){
     const q=w.ort;
     try{
@@ -171,14 +192,34 @@ async function buildMap(onlyMissing=false){
       p.textContent='❌ Fehler: '+w.ort+' – '+e.message;statusBox.appendChild(p);
     }
   }
+
+  // Kunden-Marker
+  for (const k of kunden) {
+    try {
+      let c = geoCache[k.ort];
+      if (!c && !onlyMissing) { c = await geocode(k.ort); await delay(1000); }
+      if (c) {
+        const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
+          .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true });
+        marker.addTo(kundenGruppe);
+      } else {
+        const p=document.createElement('div');
+        p.textContent='❌ Fehlt: '+k.ort;statusBox.appendChild(p);
+      }
+    } catch (e) {
+      const p=document.createElement('div');
+      p.textContent='❌ Fehler: '+k.ort+' – '+e.message;statusBox.appendChild(p);
+    }
+  }
 }
 
-// Filter
+// === Filter ===
 function updateLayers(){
   if(chkGruen.checked)map.addLayer(gruppeGruen);else map.removeLayer(gruppeGruen);
   if(chkOrange.checked)map.addLayer(gruppeOrange);else map.removeLayer(gruppeOrange);
   if(chkRot.checked)map.addLayer(gruppeRot);else map.removeLayer(gruppeRot);
   if(chkGrau.checked)map.addLayer(gruppeGrau);else map.removeLayer(gruppeGrau);
+  if(chkKunden.checked)map.addLayer(kundenGruppe);else map.removeLayer(kundenGruppe);
 }
 document.addEventListener('change',e=>{if(e.target.type==='checkbox')updateLayers();});
 retryBtn.onclick=()=>buildMap(true);
