@@ -4,92 +4,71 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pelletwerke – Europa Preiskarte</title>
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
-    html, body { height: 100%; margin: 0; }
-    #map { width: 100%; height: 100%; }
-    .legend, .panel {
-      position: absolute; z-index: 1000; background: #fff; padding: 8px 10px;
-      border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,.12); font: 14px/1.2 system-ui, Arial, sans-serif;
-    }
-    .legend { bottom: 12px; right: 12px; }
-    .legend i { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:-2px; }
-    .panel { top: 12px; left: 12px; max-width: 360px }
-    .panel details summary { cursor: pointer; font-weight: 600 }
-    .fail { color:#b00020; }
-    .ok { color:#2e7d32; }
-    button.small { padding:6px 10px; border-radius:6px; border:1px solid #ddd; background:#f5f5f5; cursor:pointer }
-    button.small:hover { background:#eee }
+    html,body{height:100%;margin:0}
+    #map{width:100%;height:100%}
+    .legend,.panel{position:absolute;z-index:1000;background:#fff;padding:8px 10px;
+      border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.12);
+      font:14px/1.3 system-ui,Arial,sans-serif}
+    .legend{bottom:12px;right:12px}
+    .legend i{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-2px}
+    .panel{top:12px;left:12px;max-width:360px}
+    .panel details summary{cursor:pointer;font-weight:600}
+    button.small{padding:6px 10px;border-radius:6px;border:1px solid #ddd;background:#f5f5f5;cursor:pointer}
+    button.small:hover{background:#eee}
   </style>
 </head>
 <body>
+<div id="map"></div>
 
-  <div id="map"></div>
+<div class="legend">
+  <b>Filter Farben</b><br>
+  <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
+  <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
+  <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
+  <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label>
+</div>
 
-  <div class="legend">
-    <b>Filter Farben</b><br>
-    <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 259 €</label><br>
-    <label><input type="checkbox" id="chkOrange" checked> 🟠 260–284 €</label><br>
-    <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
-    <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label>
-  </div>
+<div class="panel">
+  <details open>
+    <summary>Hinweise & Status</summary>
+    <div style="margin-top:6px">
+      • Preise änderst du unten in <code>werke</code> (nur <code>preis</code>).<br>
+      • Koordinaten werden automatisch gesucht & gespeichert.<br>
+      • Du kannst auch Orte in Polen, Tschechien, Belgien oder den Niederlanden eintragen (z. B. „Kraków, Polen“).<br>
+    </div>
+    <div style="margin-top:8px">
+      <button class="small" id="retryBtn">Fehlende Orte neu suchen</button>
+      <button class="small" id="clearCacheBtn">Cache leeren</button>
+    </div>
+    <div id="status" style="margin-top:8px;max-height:160px;overflow:auto;border-top:1px solid #eee;padding-top:6px"></div>
+  </details>
+</div>
 
-  <div class="panel">
-    <details open>
-      <summary>Hinweise & Status</summary>
-      <div style="margin-top:6px">
-        • Preise änderst du unten in <code>werke</code> (nur Feld <code>preis</code>).<br>
-        • Koordinaten werden automatisch gesucht & gespeichert.<br>
-        • Wenn ein Ort fehlt, steht er hier als „Fehlt“ – dann den Ortsnamen präziser machen (z. B. „…, Österreich“).<br>
-      </div>
-      <div style="margin-top:8px">
-        <button class="small" id="retryBtn">Fehlende Orte neu suchen</button>
-        <button class="small" id="clearCacheBtn">Cache leeren</button>
-      </div>
-      <div id="status" style="margin-top:8px; max-height:160px; overflow:auto; border-top:1px solid #eee; padding-top:6px"></div>
-    </details>
-  </div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map=L.map('map').setView([51,11],5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  minZoom:4,maxZoom:10,attribution:'&copy; OpenStreetMap'
+}).addTo(map);
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+function colorForPrice(p){if(!p||p<=0)return'#9e9e9e';if(p<=260)return'green';if(p<285)return'orange';return'red';}
+const CACHE_KEY='geoCachePellets_EU';
+const geoCache=JSON.parse(localStorage.getItem(CACHE_KEY)||'{}');
+async function geocode(q){
+  if(geoCache[q])return geoCache[q];
+  const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&accept-language=de`);
+  const d=await r.json();
+  if(d&&d.length){const{lat,lon}=d[0];geoCache[q]={lat:+lat,lon:+lon};
+    localStorage.setItem(CACHE_KEY,JSON.stringify(geoCache));return geoCache[q];}
+  throw new Error('kein Treffer für '+q);
+}
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 
-  <script>
-    // === Europa-Karte ===
-    const map = L.map('map').setView([51, 11], 4); // Mitteleuropa-Ansicht
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      minZoom: 4, maxZoom: 10,
-      attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
-
-    // === Farbskala ===
-    function colorForPrice(preis) {
-      if (!preis || preis <= 0) return '#9e9e9e'; // grau
-      if (preis <= 260) return 'green';
-      if (preis < 285) return 'orange';
-      return 'red';
-    }
-
-    // === Geocache + Geocoding ===
-    const CACHE_KEY = 'geoCachePellets_v4';
-    const geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-    async function geocode(query) {
-      if (geoCache[query]) return geoCache[query];
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&accept-language=de`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data && data.length) {
-        const { lat, lon } = data[0];
-        geoCache[query] = { lat: parseFloat(lat), lon: parseFloat(lon) };
-        localStorage.setItem(CACHE_KEY, JSON.stringify(geoCache));
-        return geoCache[query];
-      }
-      throw new Error('Kein Treffer für ' + query);
-    }
-    function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
-
-    // === Daten: alle Firmen (mit deinen Preisen) ===
-    const werke = [
-      { firma: "LEAG Pellets GmbH", ort: "23966 Wismar, Deutschland", preis: 235 },
+// === Firmen ===
+const werke=[
+  { firma: "LEAG Pellets GmbH", ort: "23966 Wismar, Deutschland", preis: 235 },
       { firma: "HVW Hobelspanverarbeitung GmbH & Co. KG", ort: "23970 Kritzow-Hornstorf, Deutschland", preis: 265 },
       { firma: "Hanse-Pellet GmbH & Co. KG", ort: "21244 Buchholz, Deutschland", preis: 0 },
       { firma: "Holtmeyer Pellet GmbH", ort: "28870 Ottersberg-Narthauen, Deutschland", preis: 250 },
@@ -155,66 +134,53 @@
       { firma: "Holzwerke Gebr. Schneider GmbH", ort: "Eberhardzell, Deutschland", preis: 0 },
       { firma: "Dorr-Biomassehof GmbH & Co. KG", ort: "Fuchstal-Asch, Deutschland", preis: 0 },
       { firma: "Brennpunkt Energie GmbH", ort: "Ruderatshofen, Deutschland", preis: 0 }
-    ];
+];
 
-    // === Layergruppen für Filter ===
-    const gruppeGruen = L.layerGroup().addTo(map);
-    const gruppeOrange = L.layerGroup().addTo(map);
-    const gruppeRot = L.layerGroup().addTo(map);
-    const gruppeGrau = L.layerGroup().addTo(map);
+const gruppeGruen=L.layerGroup().addTo(map),
+      gruppeOrange=L.layerGroup().addTo(map),
+      gruppeRot=L.layerGroup().addTo(map),
+      gruppeGrau=L.layerGroup().addTo(map);
+const statusBox=document.getElementById('status');
 
-    const statusBox = document.getElementById('status');
-
-    async function buildMap(onlyMissing = false) {
-      [gruppeGruen, gruppeOrange, gruppeRot, gruppeGrau].forEach(g => g.clearLayers());
-      statusBox.innerHTML = '';
-
-      for (const w of werke) {
-        const query = w.ort;
-        try {
-          let coords = geoCache[query];
-          if (!coords && !onlyMissing) {
-            coords = await geocode(query);
-            await delay(1000);
-          }
-          if (coords) {
-            const farbe = colorForPrice(w.preis);
-            const preisText = w.preis > 0
-              ? `<b>${w.preis} €</b>`
-              : `<i style="color:gray;">kein Preis eingetragen</i>`;
-            const marker = L.circleMarker([coords.lat, coords.lon], {
-              radius: 8, color: farbe, fillColor: farbe, fillOpacity: 0.85
-            }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${preisText}`, { sticky: true });
-
-            if (farbe === 'green') marker.addTo(gruppeGruen);
-            else if (farbe === 'orange') marker.addTo(gruppeOrange);
-            else if (farbe === 'red') marker.addTo(gruppeRot);
-            else marker.addTo(gruppeGrau);
-          }
-        } catch (e) {
-          const p = document.createElement('div');
-          p.innerHTML = `❌ Fehler: ${w.ort} – ${e.message}`;
-          statusBox.appendChild(p);
-        }
+async function buildMap(onlyMissing=false){
+  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau].forEach(g=>g.clearLayers());
+  statusBox.innerHTML='';
+  for(const w of werke){
+    const q=w.ort;
+    try{
+      let c=geoCache[q];
+      if(!c&&!onlyMissing){c=await geocode(q);await delay(1000);}
+      if(c){
+        const f=colorForPrice(w.preis);
+        const t=w.preis>0?`<b>${w.preis} €</b>`:`<i style="color:gray">kein Preis</i>`;
+        const m=L.circleMarker([c.lat,c.lon],{radius:8,color:f,fillColor:f,fillOpacity:.85})
+          .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`,{sticky:true});
+        if(f==='green')m.addTo(gruppeGruen);
+        else if(f==='orange')m.addTo(gruppeOrange);
+        else if(f==='red')m.addTo(gruppeRot);
+        else m.addTo(gruppeGrau);
+      }else{
+        const p=document.createElement('div');
+        p.textContent='❌ Fehlt: '+w.ort;statusBox.appendChild(p);
       }
+    }catch(e){
+      const p=document.createElement('div');
+      p.textContent='❌ Fehler: '+w.ort+' – '+e.message;statusBox.appendChild(p);
     }
+  }
+}
 
-    // === Filterfunktion ===
-    function updateLayers() {
-      if (document.getElementById('chkGruen').checked) map.addLayer(gruppeGruen); else map.removeLayer(gruppeGruen);
-      if (document.getElementById('chkOrange').checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
-      if (document.getElementById('chkRot').checked) map.addLayer(gruppeRot); else map.removeLayer(gruppeRot);
-      if (document.getElementById('chkGrau').checked) map.addLayer(gruppeGrau); else map.removeLayer(gruppeGrau);
-    }
-    document.addEventListener('change', e => { if (e.target.type === 'checkbox') updateLayers(); });
-
-    document.getElementById('retryBtn').addEventListener('click', () => buildMap(true));
-    document.getElementById('clearCacheBtn').addEventListener('click', () => {
-      localStorage.removeItem(CACHE_KEY);
-      alert('Geocache gelöscht. Seite neu laden.');
-    });
-
-    buildMap();
-  </script>
+// Filter
+function updateLayers(){
+  if(chkGruen.checked)map.addLayer(gruppeGruen);else map.removeLayer(gruppeGruen);
+  if(chkOrange.checked)map.addLayer(gruppeOrange);else map.removeLayer(gruppeOrange);
+  if(chkRot.checked)map.addLayer(gruppeRot);else map.removeLayer(gruppeRot);
+  if(chkGrau.checked)map.addLayer(gruppeGrau);else map.removeLayer(gruppeGrau);
+}
+document.addEventListener('change',e=>{if(e.target.type==='checkbox')updateLayers();});
+retryBtn.onclick=()=>buildMap(true);
+clearCacheBtn.onclick=()=>{localStorage.removeItem(CACHE_KEY);alert('Geocache gelöscht – neu laden!');};
+buildMap();
+</script>
 </body>
 </html>
