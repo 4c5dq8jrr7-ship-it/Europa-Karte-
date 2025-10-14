@@ -36,7 +36,7 @@
   <details open>
     <summary>Hinweise & Status</summary>
     <div style="margin-top:6px">
-      • Preise werden automatisch aus Google Sheets geladen.<br>
+      • Preise & Kunden werden automatisch aus Google Sheets geladen.<br>
       • Koordinaten werden automatisch gesucht & gespeichert.<br>
     </div>
     <div style="margin-top:8px">
@@ -60,6 +60,7 @@ function colorForPrice(p) {
   if (p < 285) return 'orange';
   return 'red';
 }
+
 const CACHE_KEY = 'geoCachePellets_EU';
 const geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
 async function geocode(q) {
@@ -76,11 +77,13 @@ async function geocode(q) {
 }
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// === Kunden ===
-const kunden = [
-  { name: "Maier & Korduletsch Energie GmbH", ort: "94474 Vilshofen, Deutschland" },
-  { name: "Landhandel Niehues GmbH & Co. KG", ort: "48720 Rosendahl Holtwick, Deutschland" }
-];
+// === Datenquellen ===
+const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv"; // Firmen
+const kundenUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=XXXXXXX"; // Kunden (gid anpassen!)
+
+let werke = [];
+let kunden = [];
+
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -97,33 +100,30 @@ const gruppeGruen = L.layerGroup().addTo(map),
       kundenGruppe = L.layerGroup().addTo(map);
 const statusBox = document.getElementById('status');
 
-let werke = [];
-
-// === Google Sheets einlesen ===
-// Deine Sheet-ID ist: 1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs
-const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-
-Papa.parse(sheetUrl, {
-  download: true,
-  header: true,
-  complete: function(results) {
-    werke = results.data.map(row => ({
-      firma: row.firma,
-      ort: row.ort,
-      preis: parseFloat(row.preis)
-    }));
-    buildMap();
-  },
-  error: function(err) {
-    console.error("Fehler beim Laden der Tabelle:", err);
-  }
-});
+// === Beide CSVs laden ===
+Promise.all([
+  fetch(sheetUrl).then(r => r.text()),
+  fetch(kundenUrl).then(r => r.text())
+]).then(([werkeCsv, kundenCsv]) => {
+  const werkeData = Papa.parse(werkeCsv, { header: true }).data;
+  const kundenData = Papa.parse(kundenCsv, { header: true }).data;
+  werke = werkeData.map(r => ({
+    firma: r.firma,
+    ort: r.ort,
+    preis: parseFloat(r.preis)
+  }));
+  kunden = kundenData.map(r => ({
+    name: r.name,
+    ort: r.ort
+  }));
+  buildMap();
+}).catch(err => console.error("Fehler beim Laden:", err));
 
 async function buildMap(onlyMissing = false) {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
   statusBox.innerHTML = '';
 
-  // Firmen-Marker
+  // Firmen
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
     try {
@@ -149,13 +149,14 @@ async function buildMap(onlyMissing = false) {
       }
     } catch (e) {
       const p = document.createElement('div');
-      p.textContent = '❌ Fehler: ' + w.ort + ' – ' + e.message;
+      p.textContent = '❌ ' + w.ort + ' – ' + e.message;
       statusBox.appendChild(p);
     }
   }
 
-  // Kunden-Marker
+  // Kunden
   for (const k of kunden) {
+    if (!k.name || !k.ort) continue;
     try {
       let c = geoCache[k.ort];
       if (!c && !onlyMissing) {
@@ -169,7 +170,7 @@ async function buildMap(onlyMissing = false) {
       }
     } catch (e) {
       const p = document.createElement('div');
-      p.textContent = '❌ Fehler: ' + k.ort + ' – ' + e.message;
+      p.textContent = '❌ ' + k.ort + ' – ' + e.message;
       statusBox.appendChild(p);
     }
   }
@@ -189,7 +190,7 @@ document.addEventListener('change', e => {
 retryBtn.onclick = () => buildMap(true);
 clearCacheBtn.onclick = () => {
   localStorage.removeItem(CACHE_KEY);
-  alert('Geocache gelöscht – neu laden!');
+  alert('Geocache gelöscht – Seite neu laden!');
 };
 </script>
 </body>
