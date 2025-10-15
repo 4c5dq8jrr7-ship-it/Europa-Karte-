@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -36,7 +36,7 @@
   <details open>
     <summary>Hinweise & Status</summary>
     <div style="margin-top:6px">
-      • Preise & Kunden werden automatisch aus Google Sheets geladen.<br>
+      • Preise werden automatisch aus Google Sheets geladen.<br>
       • Koordinaten werden automatisch gesucht & gespeichert.<br>
     </div>
     <div style="margin-top:8px">
@@ -60,7 +60,6 @@ function colorForPrice(p) {
   if (p < 285) return 'orange';
   return 'red';
 }
-
 const CACHE_KEY = 'geoCachePellets_EU';
 const geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
 async function geocode(q) {
@@ -77,13 +76,11 @@ async function geocode(q) {
 }
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// === Datenquellen ===
-const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv"; // Firmen
-const kundenUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1656149918"; // Kunden (gid anpassen!)
-
-let werke = [];
-let kunden = [];
-
+// === Kunden ===
+const kunden = [
+  { name: "landhandel Niehues GmbH & Co. KG", ort: "48720 Rosendahl Holtwick, Deutschland" },
+  { name: "Kunde Müller", ort: "Hamburg, Deutschland" }
+];
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -100,37 +97,33 @@ const gruppeGruen = L.layerGroup().addTo(map),
       kundenGruppe = L.layerGroup().addTo(map);
 const statusBox = document.getElementById('status');
 
-// === Beide CSVs laden ===
-Promise.all([
-  fetch(sheetUrl).then(r => r.text()),
-  fetch(kundenUrl).then(r => r.text())
-]).then(([werkeCsv, kundenCsv]) => {
-  const werkeData = Papa.parse(werkeCsv, { header: true }).data;
-  const kundenData = Papa.parse(kundenCsv, { header: true }).data;
+let werke = [];
 
-  // 🔍 DEBUG: Zeige CSV-Inhalte in der Konsole
-  console.log("✅ Werke CSV Vorschau:", werkeData.slice(0,5));
-  console.log("✅ Kunden CSV Vorschau:", kundenData.slice(0,5));
+// === Google Sheets einlesen ===
+// Deine Sheet-ID ist: 1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs
+const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
 
-  werke = werkeData.map(r => ({
-    firma: r.firma,
-    ort: r.ort,
-    preis: parseFloat(r.preis)
-  }));
-  kunden = kundenData.map(r => ({
-    name: r.name || r.Name,   // unterstützt Groß- und Kleinschreibung
-    ort: r.ort || r.Ort
-  }));
-
-  console.log("➡️ Kunden geladen:", kunden.length);
-  buildMap();
-}).catch(err => console.error("Fehler beim Laden:", err));
+Papa.parse(sheetUrl, {
+  download: true,
+  header: true,
+  complete: function(results) {
+    werke = results.data.map(row => ({
+      firma: row.firma,
+      ort: row.ort,
+      preis: parseFloat(row.preis)
+    }));
+    buildMap();
+  },
+  error: function(err) {
+    console.error("Fehler beim Laden der Tabelle:", err);
+  }
+});
 
 async function buildMap(onlyMissing = false) {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
   statusBox.innerHTML = '';
 
-  // Firmen
+  // Firmen-Marker
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
     try {
@@ -156,15 +149,13 @@ async function buildMap(onlyMissing = false) {
       }
     } catch (e) {
       const p = document.createElement('div');
-      p.textContent = '❌ ' + w.ort + ' – ' + e.message;
+      p.textContent = '❌ Fehler: ' + w.ort + ' – ' + e.message;
       statusBox.appendChild(p);
     }
   }
 
-  // Kunden
-  let kundenMarkerCount = 0;
+  // Kunden-Marker
   for (const k of kunden) {
-    if (!k.name || !k.ort) continue;
     try {
       let c = geoCache[k.ort];
       if (!c && !onlyMissing) {
@@ -175,18 +166,13 @@ async function buildMap(onlyMissing = false) {
         const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
           .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true });
         marker.addTo(kundenGruppe);
-        kundenMarkerCount++;
       }
     } catch (e) {
       const p = document.createElement('div');
-      p.textContent = '❌ ' + k.ort + ' – ' + e.message;
+      p.textContent = '❌ Fehler: ' + k.ort + ' – ' + e.message;
       statusBox.appendChild(p);
     }
   }
-
-  // 🔍 DEBUG: Zusammenfassung ausgeben
-  console.log(`🏭 Werke angezeigt: ${gruppeGruen.getLayers().length + gruppeOrange.getLayers().length + gruppeRot.getLayers().length + gruppeGrau.getLayers().length}`);
-  console.log(`👥 Kunden angezeigt: ${kundenMarkerCount}`);
 }
 
 // Filter
@@ -203,8 +189,9 @@ document.addEventListener('change', e => {
 retryBtn.onclick = () => buildMap(true);
 clearCacheBtn.onclick = () => {
   localStorage.removeItem(CACHE_KEY);
-  alert('Geocache gelöscht – Seite neu laden!');
+  alert('Geocache gelöscht – neu laden!');
 };
 </script>
 </body>
 </html>
+
