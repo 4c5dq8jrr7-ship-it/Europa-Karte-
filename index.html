@@ -107,15 +107,22 @@ Promise.all([
 ]).then(([werkeCsv, kundenCsv]) => {
   const werkeData = Papa.parse(werkeCsv, { header: true }).data;
   const kundenData = Papa.parse(kundenCsv, { header: true }).data;
+
+  // 🔍 DEBUG: Zeige CSV-Inhalte in der Konsole
+  console.log("✅ Werke CSV Vorschau:", werkeData.slice(0,5));
+  console.log("✅ Kunden CSV Vorschau:", kundenData.slice(0,5));
+
   werke = werkeData.map(r => ({
     firma: r.firma,
     ort: r.ort,
     preis: parseFloat(r.preis)
   }));
   kunden = kundenData.map(r => ({
-    name: r.name,
-    ort: r.ort
+    name: r.name || r.Name,   // unterstützt Groß- und Kleinschreibung
+    ort: r.ort || r.Ort
   }));
+
+  console.log("➡️ Kunden geladen:", kunden.length);
   buildMap();
 }).catch(err => console.error("Fehler beim Laden:", err));
 
@@ -155,6 +162,7 @@ async function buildMap(onlyMissing = false) {
   }
 
   // Kunden
+  let kundenMarkerCount = 0;
   for (const k of kunden) {
     if (!k.name || !k.ort) continue;
     try {
@@ -167,6 +175,7 @@ async function buildMap(onlyMissing = false) {
         const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
           .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true });
         marker.addTo(kundenGruppe);
+        kundenMarkerCount++;
       }
     } catch (e) {
       const p = document.createElement('div');
@@ -174,6 +183,10 @@ async function buildMap(onlyMissing = false) {
       statusBox.appendChild(p);
     }
   }
+
+  // 🔍 DEBUG: Zusammenfassung ausgeben
+  console.log(`🏭 Werke angezeigt: ${gruppeGruen.getLayers().length + gruppeOrange.getLayers().length + gruppeRot.getLayers().length + gruppeGrau.getLayers().length}`);
+  console.log(`👥 Kunden angezeigt: ${kundenMarkerCount}`);
 }
 
 // Filter
