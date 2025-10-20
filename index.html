@@ -25,6 +25,19 @@
       transform:scale(1.3);
       cursor:pointer;
     }
+    #loading {
+      position:absolute;
+      top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      background:white;
+      padding:15px 25px;
+      border-radius:10px;
+      box-shadow:0 0 15px rgba(0,0,0,.3);
+      font-family:system-ui;
+      font-size:16px;
+      z-index:2000;
+      display:none;
+    }
   </style>
 </head>
 <body>
@@ -39,6 +52,8 @@
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label>
 </div>
 
+<div id="loading">💭 Berechne günstigste Firma...</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const map = L.map('map').setView([51,11],5);
@@ -46,7 +61,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   minZoom:4, maxZoom:10, attribution: '&copy; OpenStreetMap'
 }).addTo(map);
 
-// === Hilfsfunktionen ===
 function colorForPrice(p) {
   if (!p || p <= 0) return '#9e9e9e';
   if (p <= 260) return 'green';
@@ -97,8 +111,9 @@ const gruppeGruen = L.layerGroup(),
       kundenGruppe = L.layerGroup();
 
 let werke = [];
+let routeLine = null;
 
-// === Daten aus Google Sheets laden ===
+// === Daten laden ===
 const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
 Papa.parse(sheetUrl, {
   download: true,
@@ -110,9 +125,9 @@ Papa.parse(sheetUrl, {
       preis: parseFloat(row.preis)
     }));
 
-    // Durchschnitt berechnen für Firmen ohne Preis
     const gueltigePreise = werke.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
     const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
+
     werke = werke.map(w => {
       if (isNaN(w.preis) || w.preis <= 0) {
         w.preis = parseFloat(durchschnitt.toFixed(2));
@@ -126,9 +141,7 @@ Papa.parse(sheetUrl, {
   }
 });
 
-// === Routing und Berechnung ===
-let routeLine = null;
-
+// === Routing anzeigen ===
 async function showRoute(a, b) {
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -137,8 +150,6 @@ async function showRoute(a, b) {
 
   const route = data.routes[0];
   const dist = (route.distance / 1000).toFixed(1);
-  const durationMin = route.duration / 60;
-  const durationStr = `${Math.floor(durationMin / 60)} h ${Math.round(durationMin % 60)} min`;
   const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
   if (routeLine) map.removeLayer(routeLine);
@@ -147,14 +158,16 @@ async function showRoute(a, b) {
   const mid = coords[Math.floor(coords.length / 2)];
   L.popup()
     .setLatLng(mid)
-    .setContent(`<b>Route:</b> ${a.label} ↔ ${b.label}<br><b>Entfernung:</b> ${dist} km<br><b>Dauer:</b> ${durationStr}`)
+    .setContent(`<b>Route:</b> ${a.label} ↔ ${b.label}<br><b>Entfernung:</b> ${dist} km`)
     .openOn(map);
 
   map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
 }
 
-// === NEU: Günstigste Firma für Kunden finden ===
+// === Günstigste Firma finden ===
 async function findeGünstigsteFirma(kunde) {
+  document.getElementById('loading').style.display = 'block';
+
   let ergebnisse = [];
   const kundeCoord = await geocode(kunde.ort);
 
@@ -167,7 +180,7 @@ async function findeGünstigsteFirma(kunde) {
       const data = await res.json();
       if (!data.routes.length) continue;
 
-      const dist = data.routes[0].distance / 1000; // km
+      const dist = data.routes[0].distance / 1000;
       const preisProKm = dist < 250 ? 2.15 : 1.85;
       const teilstrecke = dist / 24;
       const gesamt = (teilstrecke * preisProKm + w.preis + 1.05).toFixed(2);
@@ -183,16 +196,24 @@ async function findeGünstigsteFirma(kunde) {
     }
   }
 
-  if (!ergebnisse.length) return alert("Keine Firmen gefunden!");
+  if (!ergebnisse.length) {
+    document.getElementById('loading').style.display = 'none';
+    return alert("Keine Firmen gefunden!");
+  }
 
-  // Günstigste Firma finden
   const guenstigste = ergebnisse.reduce((min, f) => f.preis < min.preis ? f : min, ergebnisse[0]);
 
-  // Route anzeigen
+  // Karte leeren & nur günstigste Firma anzeigen
+  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,gruppeRosa].forEach(g => map.removeLayer(g));
   const firmaCoord = await geocode(guenstigste.ort);
+
+  // Marker für günstigste Firma
+  const marker = L.marker([firmaCoord.lat, firmaCoord.lon])
+    .bindTooltip(`<b>${guenstigste.firma}</b><br>${guenstigste.ort}<br><b>${guenstigste.preis} €</b>`, { sticky: true })
+    .addTo(map);
+
   showRoute({ label: kunde.name, coord: kundeCoord }, { label: guenstigste.firma, coord: firmaCoord });
 
-  // Popup mit Info
   L.popup()
     .setLatLng([kundeCoord.lat, kundeCoord.lon])
     .setContent(`
@@ -202,21 +223,15 @@ async function findeGünstigsteFirma(kunde) {
       <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${guenstigste.preis} €</span>
     `)
     .openOn(map);
+
+  document.getElementById('loading').style.display = 'none';
 }
 
-// === Marker-Klick ===
+// === Klick ===
 async function handleMarkerClick(label, coord) {
   const kunde = kunden.find(k => k.name === label);
   if (kunde) {
     await findeGünstigsteFirma(kunde);
-  } else {
-    // Standard: Zwei Punkte manuell verbinden
-    if (!window.selectedPoints) window.selectedPoints = [];
-    window.selectedPoints.push({ label, coord });
-    if (window.selectedPoints.length === 2) {
-      showRoute(window.selectedPoints[0], window.selectedPoints[1]);
-      window.selectedPoints = [];
-    }
   }
 }
 
@@ -224,38 +239,33 @@ async function handleMarkerClick(label, coord) {
 async function buildMap() {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,gruppeRosa,kundenGruppe].forEach(g => g.clearLayers());
 
-  // Firmenmarker
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
-    try {
-      let c = geoCache[w.ort] || await geocode(w.ort);
-      const f = w.durchschnitt ? '#ff66b3' : colorForPrice(w.preis);
-      const text = w.durchschnitt ? `${w.preis} € (Durchschnitt)` : `${w.preis} €`;
-      const marker = L.circleMarker([c.lat, c.lon], { radius: 8, color: f, fillColor: f, fillOpacity: 0.85 })
-        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br><b>${text}</b>`, { sticky: true })
-        .on('click', () => handleMarkerClick(w.firma, c));
+    let c = geoCache[w.ort] || await geocode(w.ort);
+    const f = w.durchschnitt ? '#ff66b3' : colorForPrice(w.preis);
+    const marker = L.circleMarker([c.lat, c.lon], {
+      radius: 8, color: f, fillColor: f, fillOpacity: 0.85
+    })
+    .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br><b>${w.preis} €</b>`, { sticky: true })
+    .on('click', () => handleMarkerClick(w.firma, c));
 
-      if (w.durchschnitt) marker.addTo(gruppeRosa);
-      else if (f === 'green') marker.addTo(gruppeGruen);
-      else if (f === 'orange') marker.addTo(gruppeOrange);
-      else if (f === 'red') marker.addTo(gruppeRot);
-      else marker.addTo(gruppeGrau);
-    } catch (e) { console.error(e); }
+    if (w.durchschnitt) marker.addTo(gruppeRosa);
+    else if (f === 'green') marker.addTo(gruppeGruen);
+    else if (f === 'orange') marker.addTo(gruppeOrange);
+    else if (f === 'red') marker.addTo(gruppeRot);
+    else marker.addTo(gruppeGrau);
   }
 
-  // Kundenmarker
   for (const k of kunden) {
-    try {
-      let c = geoCache[k.ort] || await geocode(k.ort);
-      const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
-        .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
-        .on('click', () => handleMarkerClick(k.name, c));
-      marker.addTo(kundenGruppe);
-    } catch (e) { console.error(e); }
+    let c = geoCache[k.ort] || await geocode(k.ort);
+    const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
+      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
+      .on('click', () => handleMarkerClick(k.name, c));
+    marker.addTo(kundenGruppe);
   }
 }
 
-// === Layersteuerung ===
+// === Layer-Steuerung ===
 function updateLayers() {
   const layers = {
     chkGruen: gruppeGruen,
