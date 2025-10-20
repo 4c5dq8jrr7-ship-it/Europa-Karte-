@@ -101,18 +101,18 @@ const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGk
 Papa.parse(sheetUrl, {
   download: true,
   header: true,
-  complete: function(results) {
+  complete: async function(results) {
     werke = results.data.map(row => ({
       firma: row.firma,
       ort: row.ort,
       preis: parseFloat(row.preis)
     }));
 
-    // 👉 Durchschnitt aller vorhandenen Preise berechnen
+    // Durchschnittspreis berechnen
     const gueltigePreise = werke.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
     const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
 
-    // 👉 Firmen ohne Preis erhalten Durchschnitt und werden rosa markiert
+    // Firmen ohne Preis bekommen Durchschnitt (rosa)
     werke = werke.map(w => {
       if (isNaN(w.preis) || w.preis <= 0) {
         w.preis = parseFloat(durchschnitt.toFixed(2));
@@ -121,11 +121,8 @@ Papa.parse(sheetUrl, {
       return w;
     });
 
-    buildMap();
-    updateLayers(); // nach dem Laden Filter anwenden
-  },
-  error: function(err) {
-    console.error("Fehler beim Laden der Tabelle:", err);
+    await buildMap();
+    updateLayers(); // beim Start aktivieren
   }
 });
 
@@ -144,54 +141,48 @@ async function showRoute(a, b) {
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
   const data = await res.json();
+  if (!data.routes.length) return alert("Keine Route gefunden!");
 
-  if (data.routes && data.routes.length) {
-    const route = data.routes[0];
-    const dist = (route.distance / 1000).toFixed(1);
-    const durationMin = route.duration / 60;
-    const durationStr = formatDuration(durationMin);
-    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+  const route = data.routes[0];
+  const dist = (route.distance / 1000).toFixed(1);
+  const durationMin = route.duration / 60;
+  const durationStr = formatDuration(durationMin);
+  const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
-    let preisProKm = dist < 250 ? 2.15 : 1.85;
-    let firmenPreis = 0;
-    let durchschnittsHinweis = "";
-    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-    if (firmeneintrag && !isNaN(firmeneintrag.preis)) {
-      firmenPreis = firmeneintrag.preis;
-      if (firmeneintrag.durchschnitt) {
-        durchschnittsHinweis = " (Durchschnittswert)";
-      }
-    }
-
-    const teilstrecke = dist / 24;
-    const berechnung = teilstrecke * preisProKm;
-    const gesamt = (berechnung + firmenPreis + 1.05).toFixed(2);
-
-    if (routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
-
-    const mid = coords[Math.floor(coords.length / 2)];
-    L.popup()
-      .setLatLng(mid)
-      .setContent(`
-        <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-        <b>Entfernung:</b> ${dist} km<br>
-        <b>Dauer:</b> ${durationStr}<br>
-        <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-        <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €${durchschnittsHinweis}<br>
-        <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
-      `)
-      .openOn(map);
-
-    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+  const preisProKm = dist < 250 ? 2.15 : 1.85;
+  let firmenPreis = 0, durchschnittsHinweis = "";
+  const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+  if (firmeneintrag) {
+    firmenPreis = firmeneintrag.preis;
+    if (firmeneintrag.durchschnitt) durchschnittsHinweis = " (Durchschnittswert)";
   }
+
+  const teilstrecke = dist / 24;
+  const gesamt = ((teilstrecke * preisProKm) + firmenPreis + 1.05).toFixed(2);
+
+  if (routeLine) map.removeLayer(routeLine);
+  routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
+
+  const mid = coords[Math.floor(coords.length / 2)];
+  L.popup()
+    .setLatLng(mid)
+    .setContent(`
+      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+      <b>Entfernung:</b> ${dist} km<br>
+      <b>Dauer:</b> ${durationStr}<br>
+      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+      <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €${durchschnittsHinweis}<br>
+      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+    `)
+    .openOn(map);
+
+  map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
 }
 
 function handleMarkerClick(label, coord) {
   selectedPoints.push({ label, coord });
   if (selectedPoints.length === 2) {
-    const [a, b] = selectedPoints;
-    showRoute(a, b);
+    showRoute(selectedPoints[0], selectedPoints[1]);
     selectedPoints = [];
   }
 }
@@ -199,19 +190,16 @@ function handleMarkerClick(label, coord) {
 async function buildMap() {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,gruppeRosa,kundenGruppe].forEach(g => g.clearLayers());
 
+  // Firmen
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
     try {
       let c = geoCache[w.ort] || await geocode(w.ort);
-      let f = w.durchschnitt ? '#ff66b3' : colorForPrice(w.preis);
-      const t = w.durchschnitt
-        ? `<b>${w.preis} €</b> (Durchschnitt)`
-        : `<b>${w.preis} €</b>`;
-      const marker = L.circleMarker([c.lat, c.lon], {
-        radius: 8, color: f, fillColor: f, fillOpacity: 0.85
-      })
-      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
-      .on('click', () => handleMarkerClick(w.firma, c));
+      const f = w.durchschnitt ? '#ff66b3' : colorForPrice(w.preis);
+      const text = w.durchschnitt ? `${w.preis} € (Durchschnitt)` : `${w.preis} €`;
+      const marker = L.circleMarker([c.lat, c.lon], { radius: 8, color: f, fillColor: f, fillOpacity: 0.85 })
+        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br><b>${text}</b>`, { sticky: true })
+        .on('click', () => handleMarkerClick(w.firma, c));
 
       if (w.durchschnitt) marker.addTo(gruppeRosa);
       else if (f === 'green') marker.addTo(gruppeGruen);
@@ -221,6 +209,7 @@ async function buildMap() {
     } catch (e) { console.error(e); }
   }
 
+  // Kunden
   for (const k of kunden) {
     try {
       let c = geoCache[k.ort] || await geocode(k.ort);
@@ -230,33 +219,29 @@ async function buildMap() {
       marker.addTo(kundenGruppe);
     } catch (e) { console.error(e); }
   }
+
+  updateLayers(); // Kunden sichtbar machen!
 }
 
-// === Checkboxen steuern Layer sichtbar/unsichtbar ===
+// === Layer-Update ===
 function updateLayers() {
-  const checks = {
+  const layers = {
     chkGruen: gruppeGruen,
     chkOrange: gruppeOrange,
     chkRot: gruppeRot,
-    chkRosa: gruppeRosa,
     chkGrau: gruppeGrau,
+    chkRosa: gruppeRosa,
     chkKunden: kundenGruppe
   };
-  for (const [id, layer] of Object.entries(checks)) {
-    if (document.getElementById(id).checked) {
-      map.addLayer(layer);
-    } else {
-      map.removeLayer(layer);
-    }
+  for (const [id, layer] of Object.entries(layers)) {
+    if (document.getElementById(id).checked) map.addLayer(layer);
+    else map.removeLayer(layer);
   }
 }
 
-// Reagiert auf Klick oder Touch (auch iPad!)
 document.querySelectorAll('.legend input[type="checkbox"]').forEach(cb => {
   cb.addEventListener('change', updateLayers);
-  cb.addEventListener('click', updateLayers);
 });
-
 </script>
 </body>
 </html>
