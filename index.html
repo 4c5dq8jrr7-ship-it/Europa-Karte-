@@ -137,7 +137,7 @@ async function showRoute(a, b) {
     // Gesamtpreis berechnen: (km ÷ 24) × Preis + Firmenpreis + 1,05
     const teilstrecke = dist / 24;
     const berechnung = teilstrecke * preisProKm;
-    const gesamt = (berechnung + firmenPreis + 1.05).toFixed(2);
+    const gesamt = (berechnung + firmenPreis * 1.05).toFixed(2);
 
     if (routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
