@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte (mit schwarzer Route + Kostenberechnung)</title>
+  <title>Pelletwerke – Europa Preiskarte (mit Kostenformel)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
@@ -36,9 +36,8 @@
   <details open>
     <summary>Hinweise & Status</summary>
     <div style="margin-top:6px">
-      • Preise werden automatisch aus Google Sheets geladen.<br>
-      • Klick auf zwei Punkte zeigt die <b>schnellste Route (blaue Linie)</b>.<br>
-      • Fahrzeit und Kosten werden berechnet.<br>
+      • Klick auf zwei Punkte zeigt Route, Entfernung, Dauer und Preis.<br>
+      • Berechnung: (km ÷ 24) × PreisProKm + Firmenpreis + 1,05 €.<br>
     </div>
     <div style="margin-top:8px">
       <button class="small" id="retryBtn">Fehlende Orte neu suchen</button>
@@ -121,11 +120,10 @@ Papa.parse(sheetUrl, {
   }
 });
 
-// === Routing (schnellste Straßenstrecke) ===
+// === Routing mit Preisberechnung ===
 let selectedPoints = [];
 let routeLine = null;
 
-// Formatfunktion für Stunden & Minuten
 function formatDuration(minutesTotal) {
   const hours = Math.floor(minutesTotal / 60);
   const minutes = Math.round(minutesTotal % 60);
@@ -133,7 +131,6 @@ function formatDuration(minutesTotal) {
   return `${minutes} min`;
 }
 
-// === Hier ist die neue Funktion mit Kostenberechnung ===
 async function showRoute(a, b) {
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -146,9 +143,21 @@ async function showRoute(a, b) {
     const durationStr = formatDuration(durationMin);
     const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
-    // 👉 Berechnung der Kosten je nach Distanz
+    // === Preis pro km bestimmen
     let preisProKm = dist < 250 ? 2.15 : 1.85;
-    const kosten = (dist * preisProKm).toFixed(2);
+
+    // === Firmenpreis herausfinden (wenn a oder b eine Firma ist)
+    let firmenPreis = 0;
+    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+    if (firmeneintrag && !isNaN(firmeneintrag.preis)) {
+      firmenPreis = firmeneintrag.preis;
+    }
+
+    // === Gesamtpreis nach deiner Formel:
+    // (dist ÷ 24) × preisProKm + firmenPreis + 1,05
+    const teilstrecke = dist / 24;
+    const berechnung = teilstrecke * preisProKm;
+    const gesamt = (berechnung + firmenPreis + 1.05).toFixed(2);
 
     if (routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
@@ -161,7 +170,8 @@ async function showRoute(a, b) {
         <b>Entfernung:</b> ${dist} km<br>
         <b>Dauer:</b> ${durationStr}<br>
         <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-        <b>Gesamtkosten:</b> <span style="color:green">${kosten} €</span>
+        <b>Firmenpreis:</b> ${firmenPreis ? firmenPreis.toFixed(2) + ' €' : '–'}<br>
+        <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
       `)
       .openOn(map);
 
@@ -171,7 +181,6 @@ async function showRoute(a, b) {
   }
 }
 
-// Klick auf Marker → Route zwischen zwei Punkten
 function handleMarkerClick(label, coord) {
   selectedPoints.push({ label, coord });
   if (selectedPoints.length === 2) {
@@ -181,7 +190,6 @@ function handleMarkerClick(label, coord) {
   }
 }
 
-// === Karte aufbauen ===
 async function buildMap(onlyMissing = false) {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
   statusBox.innerHTML = '';
@@ -238,7 +246,6 @@ async function buildMap(onlyMissing = false) {
   }
 }
 
-// Klick auf Karte entfernt Route
 map.on('click', () => {
   if (routeLine) {
     map.removeLayer(routeLine);
@@ -246,7 +253,6 @@ map.on('click', () => {
   }
 });
 
-// === Filter ===
 function updateLayers() {
   if (chkGruen.checked) map.addLayer(gruppeGruen); else map.removeLayer(gruppeGruen);
   if (chkOrange.checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
