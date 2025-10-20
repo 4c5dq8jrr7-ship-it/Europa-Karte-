@@ -137,7 +137,7 @@ async function showRoute(a, b) {
 
     if (routeLine) map.removeLayer(routeLine);
     // 👉 Schwarze Route zeichnen
-    routeLine = L.polyline(coords, { color: 'black', weight: 5, opacity: 0.8 }).addTo(map);
+    routeLine = L.polyline(coords, { color: 'light blue', weight: 5, opacity: 0.8 }).addTo(map);
 
     const mid = coords[Math.floor(coords.length / 2)];
     L.popup()
