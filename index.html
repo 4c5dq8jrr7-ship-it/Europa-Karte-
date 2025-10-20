@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte</title>
+  <title>Pelletwerke – Europa Preiskarte (mit Routing)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
@@ -37,7 +37,7 @@
     <summary>Hinweise & Status</summary>
     <div style="margin-top:6px">
       • Preise werden automatisch aus Google Sheets geladen.<br>
-      • Koordinaten werden automatisch gesucht & gespeichert.<br>
+      • Klick auf zwei Punkte zeigt die Fahrroute (nicht Luftlinie).<br>
     </div>
     <div style="margin-top:8px">
       <button class="small" id="retryBtn">Fehlende Orte neu suchen</button>
@@ -120,20 +120,34 @@ Papa.parse(sheetUrl, {
   }
 });
 
-// === Entfernungsmessung ===
+// === Routing (echte Straßenstrecke über OSRM) ===
 let selectedPoints = [];
-let distanceLine = null;
+let routeLine = null;
 
-function haversineDistance(latlng1, latlng2) {
-  const R = 6371; // Erdradius in km
-  const dLat = (latlng2.lat - latlng1.lat) * Math.PI / 180;
-  const dLon = (latlng2.lon - latlng1.lon) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-            Math.cos(latlng1.lat * Math.PI / 180) *
-            Math.cos(latlng2.lat * Math.PI / 180) *
-            Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+async function showRoute(a, b) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+  const res = await fetch(url);
+  const data = await res.json();
+
+  if (data.routes && data.routes.length) {
+    const route = data.routes[0];
+    const dist = (route.distance / 1000).toFixed(1);
+    const duration = Math.round(route.duration / 60);
+    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+    if (routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
+
+    const mid = coords[Math.floor(coords.length / 2)];
+    L.popup()
+      .setLatLng(mid)
+      .setContent(`<b>Route:</b> ${a.label} ↔ ${b.label}<br><b>Entfernung:</b> ${dist} km<br><b>Dauer:</b> ${duration} min`)
+      .openOn(map);
+
+    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+  } else {
+    alert("Keine Route gefunden!");
+  }
 }
 
 function handleMarkerClick(label, coord) {
@@ -141,21 +155,7 @@ function handleMarkerClick(label, coord) {
 
   if (selectedPoints.length === 2) {
     const [a, b] = selectedPoints;
-    const dist = haversineDistance(a.coord, b.coord).toFixed(1);
-
-    if (distanceLine) map.removeLayer(distanceLine);
-    distanceLine = L.polyline([
-      [a.coord.lat, a.coord.lon],
-      [b.coord.lat, b.coord.lon]
-    ], { color: 'blue', dashArray: '5,5' }).addTo(map);
-
-    const midLat = (a.coord.lat + b.coord.lat) / 2;
-    const midLon = (a.coord.lon + b.coord.lon) / 2;
-    L.popup()
-      .setLatLng([midLat, midLon])
-      .setContent(`<b>Entfernung:</b> ${dist} km<br>${a.label} ↔ ${b.label}`)
-      .openOn(map);
-
+    showRoute(a, b);
     selectedPoints = [];
   }
 }
@@ -219,11 +219,11 @@ async function buildMap(onlyMissing = false) {
   }
 }
 
-// Karte-Klick löscht die Entfernung
+// Karte-Klick löscht Route
 map.on('click', () => {
-  if (distanceLine) {
-    map.removeLayer(distanceLine);
-    distanceLine = null;
+  if (routeLine) {
+    map.removeLayer(routeLine);
+    routeLine = null;
   }
 });
 
