@@ -87,12 +87,12 @@ const blauesDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
-const gruppeGruen = L.layerGroup().addTo(map),
-      gruppeOrange = L.layerGroup().addTo(map),
-      gruppeRot = L.layerGroup().addTo(map),
-      gruppeGrau = L.layerGroup().addTo(map),
-      gruppeRosa = L.layerGroup().addTo(map),
-      kundenGruppe = L.layerGroup().addTo(map);
+const gruppeGruen = L.layerGroup(),
+      gruppeOrange = L.layerGroup(),
+      gruppeRot = L.layerGroup(),
+      gruppeGrau = L.layerGroup(),
+      gruppeRosa = L.layerGroup(),
+      kundenGruppe = L.layerGroup();
 
 let werke = [];
 
@@ -122,6 +122,7 @@ Papa.parse(sheetUrl, {
     });
 
     buildMap();
+    updateLayers(); // nach dem Laden Filter anwenden
   },
   error: function(err) {
     console.error("Fehler beim Laden der Tabelle:", err);
@@ -152,8 +153,6 @@ async function showRoute(a, b) {
     const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
     let preisProKm = dist < 250 ? 2.15 : 1.85;
-
-    // Firmenpreis finden
     let firmenPreis = 0;
     let durchschnittsHinweis = "";
     const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
@@ -164,7 +163,6 @@ async function showRoute(a, b) {
       }
     }
 
-    // Gesamtpreis berechnen
     const teilstrecke = dist / 24;
     const berechnung = teilstrecke * preisProKm;
     const gesamt = (berechnung + firmenPreis + 1.05).toFixed(2);
@@ -186,8 +184,6 @@ async function showRoute(a, b) {
       .openOn(map);
 
     map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
-  } else {
-    alert("Keine Route gefunden!");
   }
 }
 
@@ -200,74 +196,67 @@ function handleMarkerClick(label, coord) {
   }
 }
 
-async function buildMap(onlyMissing = false) {
+async function buildMap() {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,gruppeRosa,kundenGruppe].forEach(g => g.clearLayers());
 
-  // Firmenmarker
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
     try {
-      let c = geoCache[w.ort];
-      if (!c && !onlyMissing) {
-        c = await geocode(w.ort);
-        await delay(1000);
-      }
-      if (c) {
-        let f = w.durchschnitt ? '#ff66b3' : colorForPrice(w.preis); // rosa Farbcode
-        const t = w.durchschnitt
-          ? `<b>${w.preis} €</b> (Durchschnitt)`
-          : `<b>${w.preis} €</b>`;
-        const marker = L.circleMarker([c.lat, c.lon], {
-          radius: 8, color: f, fillColor: f, fillOpacity: 0.85
-        })
-        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
-        .on('click', () => handleMarkerClick(w.firma, c));
+      let c = geoCache[w.ort] || await geocode(w.ort);
+      let f = w.durchschnitt ? '#ff66b3' : colorForPrice(w.preis);
+      const t = w.durchschnitt
+        ? `<b>${w.preis} €</b> (Durchschnitt)`
+        : `<b>${w.preis} €</b>`;
+      const marker = L.circleMarker([c.lat, c.lon], {
+        radius: 8, color: f, fillColor: f, fillOpacity: 0.85
+      })
+      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
+      .on('click', () => handleMarkerClick(w.firma, c));
 
-        if (w.durchschnitt) marker.addTo(gruppeRosa);
-        else if (f === 'green') marker.addTo(gruppeGruen);
-        else if (f === 'orange') marker.addTo(gruppeOrange);
-        else if (f === 'red') marker.addTo(gruppeRot);
-        else marker.addTo(gruppeGrau);
-      }
+      if (w.durchschnitt) marker.addTo(gruppeRosa);
+      else if (f === 'green') marker.addTo(gruppeGruen);
+      else if (f === 'orange') marker.addTo(gruppeOrange);
+      else if (f === 'red') marker.addTo(gruppeRot);
+      else marker.addTo(gruppeGrau);
     } catch (e) { console.error(e); }
   }
 
-  // Kundenmarker
   for (const k of kunden) {
     try {
-      let c = geoCache[k.ort];
-      if (!c && !onlyMissing) {
-        c = await geocode(k.ort);
-        await delay(1000);
-      }
-      if (c) {
-        const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
-          .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
-          .on('click', () => handleMarkerClick(k.name, c));
-        marker.addTo(kundenGruppe);
-      }
+      let c = geoCache[k.ort] || await geocode(k.ort);
+      const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
+        .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
+        .on('click', () => handleMarkerClick(k.name, c));
+      marker.addTo(kundenGruppe);
     } catch (e) { console.error(e); }
   }
 }
 
-map.on('click', () => {
-  if (routeLine) {
-    map.removeLayer(routeLine);
-    routeLine = null;
+// === Checkboxen steuern Layer sichtbar/unsichtbar ===
+function updateLayers() {
+  const checks = {
+    chkGruen: gruppeGruen,
+    chkOrange: gruppeOrange,
+    chkRot: gruppeRot,
+    chkRosa: gruppeRosa,
+    chkGrau: gruppeGrau,
+    chkKunden: kundenGruppe
+  };
+  for (const [id, layer] of Object.entries(checks)) {
+    if (document.getElementById(id).checked) {
+      map.addLayer(layer);
+    } else {
+      map.removeLayer(layer);
+    }
   }
+}
+
+// Reagiert auf Klick oder Touch (auch iPad!)
+document.querySelectorAll('.legend input[type="checkbox"]').forEach(cb => {
+  cb.addEventListener('change', updateLayers);
+  cb.addEventListener('click', updateLayers);
 });
 
-function updateLayers() {
-  if (chkGruen.checked) map.addLayer(gruppeGruen); else map.removeLayer(gruppeGruen);
-  if (chkOrange.checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
-  if (chkRot.checked) map.addLayer(gruppeRot); else map.removeLayer(gruppeRot);
-  if (chkGrau.checked) map.addLayer(gruppeGrau); else map.removeLayer(gruppeGrau);
-  if (chkRosa.checked) map.addLayer(gruppeRosa); else map.removeLayer(gruppeRosa); // 🩷 hier steuerbar!
-  if (chkKunden.checked) map.addLayer(kundenGruppe); else map.removeLayer(kundenGruppe);
-}
-document.addEventListener('change', e => {
-  if (e.target.type === 'checkbox') updateLayers();
-});
 </script>
 </body>
 </html>
