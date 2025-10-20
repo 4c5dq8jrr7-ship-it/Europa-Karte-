@@ -127,17 +127,17 @@ async function showRoute(a, b) {
     // Preislogik
     let preisProKm = dist < 250 ? 2.15 : 1.85;
 
-    // Pelletpreis finden
-    let Pelletpreis = 0;
+    // Firmenpreis finden
+    let Firmenpreis = 0;
     const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
     if (firmeneintrag && !isNaN(firmeneintrag.preis)) {
       firmenPreis = firmeneintrag.preis;
     }
 
-    // Gesamtpreis berechnen: (km ÷ 24) × Preis + Pelletpreis + 1,05
+    // Gesamtpreis berechnen: (km ÷ 24) × Preis + Firmenpreis + 1,05
     const teilstrecke = dist / 24;
     const berechnung = teilstrecke * preisProKm;
-    const gesamt = (berechnung + Pelletpreis * 1.05).toFixed(2);
+    const gesamt = (berechnung + Firmenpreis * 1.05).toFixed(2);
 
     if (routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
