@@ -1,4 +1,4 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -60,6 +60,7 @@ function colorForPrice(p) {
   if (p < 285) return 'orange';
   return 'red';
 }
+
 const CACHE_KEY = 'geoCachePellets_EU';
 const geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
 async function geocode(q) {
@@ -78,9 +79,11 @@ function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // === Kunden ===
 const kunden = [
-  { name: "landhandel Niehues GmbH & Co. KG", ort: "48720 Rosendahl Holtwick, Deutschland" },
-  { name: "Kunde Müller", ort: "Hamburg, Deutschland" }
+  { name: "Landhandel Niehues GmbH & Co. KG", ort: "48720 Rosendahl Holtwick, Deutschland" },
+  { name: "Kunde Müller", ort: "Hamburg, Deutschland" },
+  { name: "Kunde Beispiel", ort: "München, Deutschland" }
 ];
+
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -100,9 +103,7 @@ const statusBox = document.getElementById('status');
 let werke = [];
 
 // === Google Sheets einlesen ===
-// Deine Sheet-ID ist: 1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs
 const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-
 Papa.parse(sheetUrl, {
   download: true,
   header: true,
@@ -119,11 +120,51 @@ Papa.parse(sheetUrl, {
   }
 });
 
+// === Entfernungsmessung ===
+let selectedPoints = [];
+let distanceLine = null;
+
+function haversineDistance(latlng1, latlng2) {
+  const R = 6371; // Erdradius in km
+  const dLat = (latlng2.lat - latlng1.lat) * Math.PI / 180;
+  const dLon = (latlng2.lon - latlng1.lon) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(latlng1.lat * Math.PI / 180) *
+            Math.cos(latlng2.lat * Math.PI / 180) *
+            Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function handleMarkerClick(label, coord) {
+  selectedPoints.push({ label, coord });
+
+  if (selectedPoints.length === 2) {
+    const [a, b] = selectedPoints;
+    const dist = haversineDistance(a.coord, b.coord).toFixed(1);
+
+    if (distanceLine) map.removeLayer(distanceLine);
+    distanceLine = L.polyline([
+      [a.coord.lat, a.coord.lon],
+      [b.coord.lat, b.coord.lon]
+    ], { color: 'blue', dashArray: '5,5' }).addTo(map);
+
+    const midLat = (a.coord.lat + b.coord.lat) / 2;
+    const midLon = (a.coord.lon + b.coord.lon) / 2;
+    L.popup()
+      .setLatLng([midLat, midLon])
+      .setContent(`<b>Entfernung:</b> ${dist} km<br>${a.label} ↔ ${b.label}`)
+      .openOn(map);
+
+    selectedPoints = [];
+  }
+}
+
 async function buildMap(onlyMissing = false) {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
   statusBox.innerHTML = '';
 
-  // Firmen-Marker
+  // === Firmen-Marker ===
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
     try {
@@ -135,17 +176,19 @@ async function buildMap(onlyMissing = false) {
       if (c) {
         const f = colorForPrice(w.preis);
         const t = w.preis > 0 ? `<b>${w.preis} €</b>` : `<i style="color:gray">kein Preis</i>`;
-        const m = L.circleMarker([c.lat, c.lon], {
+        const marker = L.circleMarker([c.lat, c.lon], {
           radius: 8,
           color: f,
           fillColor: f,
           fillOpacity: 0.85
-        }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true });
+        })
+        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
+        .on('click', () => handleMarkerClick(w.firma, c));
 
-        if (f === 'green') m.addTo(gruppeGruen);
-        else if (f === 'orange') m.addTo(gruppeOrange);
-        else if (f === 'red') m.addTo(gruppeRot);
-        else m.addTo(gruppeGrau);
+        if (f === 'green') marker.addTo(gruppeGruen);
+        else if (f === 'orange') marker.addTo(gruppeOrange);
+        else if (f === 'red') marker.addTo(gruppeRot);
+        else marker.addTo(gruppeGrau);
       }
     } catch (e) {
       const p = document.createElement('div');
@@ -154,7 +197,7 @@ async function buildMap(onlyMissing = false) {
     }
   }
 
-  // Kunden-Marker
+  // === Kunden-Marker ===
   for (const k of kunden) {
     try {
       let c = geoCache[k.ort];
@@ -164,7 +207,8 @@ async function buildMap(onlyMissing = false) {
       }
       if (c) {
         const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
-          .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true });
+          .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
+          .on('click', () => handleMarkerClick(k.name, c));
         marker.addTo(kundenGruppe);
       }
     } catch (e) {
@@ -175,7 +219,15 @@ async function buildMap(onlyMissing = false) {
   }
 }
 
-// Filter
+// Karte-Klick löscht die Entfernung
+map.on('click', () => {
+  if (distanceLine) {
+    map.removeLayer(distanceLine);
+    distanceLine = null;
+  }
+});
+
+// === Filter ===
 function updateLayers() {
   if (chkGruen.checked) map.addLayer(gruppeGruen); else map.removeLayer(gruppeGruen);
   if (chkOrange.checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
@@ -186,6 +238,7 @@ function updateLayers() {
 document.addEventListener('change', e => {
   if (e.target.type === 'checkbox') updateLayers();
 });
+
 retryBtn.onclick = () => buildMap(true);
 clearCacheBtn.onclick = () => {
   localStorage.removeItem(CACHE_KEY);
@@ -194,4 +247,3 @@ clearCacheBtn.onclick = () => {
 </script>
 </body>
 </html>
-
