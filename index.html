@@ -46,6 +46,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   minZoom:4, maxZoom:10, attribution: '&copy; OpenStreetMap'
 }).addTo(map);
 
+// === Hilfsfunktionen ===
 function colorForPrice(p) {
   if (!p || p <= 0) return '#9e9e9e';
   if (p <= 260) return 'green';
@@ -87,6 +88,7 @@ const blauesDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
+// === Layergruppen ===
 const gruppeGruen = L.layerGroup(),
       gruppeOrange = L.layerGroup(),
       gruppeRot = L.layerGroup(),
@@ -96,7 +98,7 @@ const gruppeGruen = L.layerGroup(),
 
 let werke = [];
 
-// === Google Sheets einlesen ===
+// === Daten aus Google Sheets laden ===
 const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
 Papa.parse(sheetUrl, {
   download: true,
@@ -108,11 +110,9 @@ Papa.parse(sheetUrl, {
       preis: parseFloat(row.preis)
     }));
 
-    // Durchschnitt aller gültigen Preise berechnen
+    // Durchschnitt berechnen für Firmen ohne Preis
     const gueltigePreise = werke.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
     const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
-
-    // Firmen ohne Preis bekommen Durchschnitt (rosa)
     werke = werke.map(w => {
       if (isNaN(w.preis) || w.preis <= 0) {
         w.preis = parseFloat(durchschnitt.toFixed(2));
@@ -122,12 +122,11 @@ Papa.parse(sheetUrl, {
     });
 
     await buildMap();
-    updateLayers(); // ← wichtig: jetzt Layer wirklich anzeigen
+    updateLayers();
   }
 });
 
-// === Routing ===
-let selectedPoints = [];
+// === Routing und Berechnung ===
 let routeLine = null;
 
 async function showRoute(a, b) {
@@ -142,56 +141,100 @@ async function showRoute(a, b) {
   const durationStr = `${Math.floor(durationMin / 60)} h ${Math.round(durationMin % 60)} min`;
   const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
-  const preisProKm = dist < 250 ? 2.15 : 1.85;
-  let firmenPreis = 0, durchschnittsHinweis = "";
-  const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-  if (firmeneintrag) {
-    firmenPreis = firmeneintrag.preis;
-    if (firmeneintrag.durchschnitt) durchschnittsHinweis = " (Durchschnittswert)";
-  }
-
-  const teilstrecke = dist / 24;
-  const gesamt = ((teilstrecke * preisProKm) + firmenPreis + 1.05).toFixed(2);
-
   if (routeLine) map.removeLayer(routeLine);
-  routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
+  routeLine = L.polyline(coords, { color: 'black', weight: 5, opacity: 0.8 }).addTo(map);
 
   const mid = coords[Math.floor(coords.length / 2)];
   L.popup()
     .setLatLng(mid)
-    .setContent(`
-      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Entfernung:</b> ${dist} km<br>
-      <b>Dauer:</b> ${durationStr}<br>
-      <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €${durchschnittsHinweis}<br>
-      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
-    `)
+    .setContent(`<b>Route:</b> ${a.label} ↔ ${b.label}<br><b>Entfernung:</b> ${dist} km<br><b>Dauer:</b> ${durationStr}`)
     .openOn(map);
 
   map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
 }
 
-function handleMarkerClick(label, coord) {
-  selectedPoints.push({ label, coord });
-  if (selectedPoints.length === 2) {
-    showRoute(selectedPoints[0], selectedPoints[1]);
-    selectedPoints = [];
+// === NEU: Günstigste Firma für Kunden finden ===
+async function findeGünstigsteFirma(kunde) {
+  let ergebnisse = [];
+  const kundeCoord = await geocode(kunde.ort);
+
+  for (const w of werke) {
+    if (!w.ort || !w.firma) continue;
+    try {
+      const firmaCoord = await geocode(w.ort);
+      const url = `https://router.project-osrm.org/route/v1/driving/${kundeCoord.lon},${kundeCoord.lat};${firmaCoord.lon},${firmaCoord.lat}?overview=false`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.routes.length) continue;
+
+      const dist = data.routes[0].distance / 1000; // km
+      const preisProKm = dist < 250 ? 2.15 : 1.85;
+      const teilstrecke = dist / 24;
+      const gesamt = (teilstrecke * preisProKm + w.preis + 1.05).toFixed(2);
+
+      ergebnisse.push({
+        firma: w.firma,
+        ort: w.ort,
+        dist: dist.toFixed(1),
+        preis: parseFloat(gesamt)
+      });
+    } catch (e) {
+      console.warn("Fehler bei Route:", w.firma, e);
+    }
+  }
+
+  if (!ergebnisse.length) return alert("Keine Firmen gefunden!");
+
+  // Günstigste Firma finden
+  const guenstigste = ergebnisse.reduce((min, f) => f.preis < min.preis ? f : min, ergebnisse[0]);
+
+  // Route anzeigen
+  const firmaCoord = await geocode(guenstigste.ort);
+  showRoute({ label: kunde.name, coord: kundeCoord }, { label: guenstigste.firma, coord: firmaCoord });
+
+  // Popup mit Info
+  L.popup()
+    .setLatLng([kundeCoord.lat, kundeCoord.lon])
+    .setContent(`
+      <b>Kunde:</b> ${kunde.name}<br>
+      <b>Günstigste Firma:</b> ${guenstigste.firma}<br>
+      <b>Entfernung:</b> ${guenstigste.dist} km<br>
+      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${guenstigste.preis} €</span>
+    `)
+    .openOn(map);
+}
+
+// === Marker-Klick ===
+async function handleMarkerClick(label, coord) {
+  const kunde = kunden.find(k => k.name === label);
+  if (kunde) {
+    await findeGünstigsteFirma(kunde);
+  } else {
+    // Standard: Zwei Punkte manuell verbinden
+    if (!window.selectedPoints) window.selectedPoints = [];
+    window.selectedPoints.push({ label, coord });
+    if (window.selectedPoints.length === 2) {
+      showRoute(window.selectedPoints[0], window.selectedPoints[1]);
+      window.selectedPoints = [];
+    }
   }
 }
 
+// === Karte aufbauen ===
 async function buildMap() {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,gruppeRosa,kundenGruppe].forEach(g => g.clearLayers());
 
-  // Firmen
+  // Firmenmarker
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
     try {
       let c = geoCache[w.ort] || await geocode(w.ort);
       const f = w.durchschnitt ? '#ff66b3' : colorForPrice(w.preis);
-      const t = w.durchschnitt ? `${w.preis} € (Durchschnitt)` : `${w.preis} €`;
+      const text = w.durchschnitt ? `${w.preis} € (Durchschnitt)` : `${w.preis} €`;
       const marker = L.circleMarker([c.lat, c.lon], { radius: 8, color: f, fillColor: f, fillOpacity: 0.85 })
-        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br><b>${t}</b>`, { sticky: true })
+        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br><b>${text}</b>`, { sticky: true })
         .on('click', () => handleMarkerClick(w.firma, c));
+
       if (w.durchschnitt) marker.addTo(gruppeRosa);
       else if (f === 'green') marker.addTo(gruppeGruen);
       else if (f === 'orange') marker.addTo(gruppeOrange);
@@ -200,7 +243,7 @@ async function buildMap() {
     } catch (e) { console.error(e); }
   }
 
-  // Kunden
+  // Kundenmarker
   for (const k of kunden) {
     try {
       let c = geoCache[k.ort] || await geocode(k.ort);
@@ -229,7 +272,6 @@ function updateLayers() {
   }
 }
 
-// Checkbox-Reaktionen
 document.querySelectorAll('.legend input[type="checkbox"]').forEach(cb => {
   cb.addEventListener('change', updateLayers);
 });
