@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte (mit schwarzer Route)</title>
+  <title>Pelletwerke – Europa Preiskarte (mit schwarzer Route + Stundenanzeige)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
@@ -38,6 +38,7 @@
     <div style="margin-top:6px">
       • Preise werden automatisch aus Google Sheets geladen.<br>
       • Klick auf zwei Punkte zeigt die **schnellste Route (schwarze Linie)**.<br>
+      • Fahrzeit wird in Stunden und Minuten angezeigt.<br>
     </div>
     <div style="margin-top:8px">
       <button class="small" id="retryBtn">Fehlende Orte neu suchen</button>
@@ -124,6 +125,14 @@ Papa.parse(sheetUrl, {
 let selectedPoints = [];
 let routeLine = null;
 
+// Formatfunktion für Stunden & Minuten
+function formatDuration(minutesTotal) {
+  const hours = Math.floor(minutesTotal / 60);
+  const minutes = Math.round(minutesTotal % 60);
+  if (hours > 0) return `${hours} h ${minutes} min`;
+  return `${minutes} min`;
+}
+
 async function showRoute(a, b) {
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -132,17 +141,18 @@ async function showRoute(a, b) {
   if (data.routes && data.routes.length) {
     const route = data.routes[0];
     const dist = (route.distance / 1000).toFixed(1);
-    const duration = Math.round(route.duration / 60);
+    const durationMin = route.duration / 60;
+    const durationStr = formatDuration(durationMin);
     const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
     if (routeLine) map.removeLayer(routeLine);
     // 👉 Schwarze Route zeichnen
-    routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
+    routeLine = L.polyline(coords, { color: 'black', weight: 5, opacity: 0.8 }).addTo(map);
 
     const mid = coords[Math.floor(coords.length / 2)];
     L.popup()
       .setLatLng(mid)
-      .setContent(`<b>Route:</b> ${a.label} ↔ ${b.label}<br><b>Entfernung:</b> ${dist} km<br><b>Dauer:</b> ${duration} min`)
+      .setContent(`<b>Route:</b> ${a.label} ↔ ${b.label}<br><b>Entfernung:</b> ${dist} km<br><b>Dauer:</b> ${durationStr}`)
       .openOn(map);
 
     map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
