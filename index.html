@@ -25,7 +25,7 @@
   <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
   <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
   <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
-  <label><input type="checkbox" id="chkGelb" checked> 🟡 Durchschnittswert</label><br>
+  <label><input type="checkbox" id="chkRosa" checked> 🩷 Durchschnittswert</label><br>
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label>
 </div>
 
@@ -81,7 +81,7 @@ const gruppeGruen = L.layerGroup().addTo(map),
       gruppeOrange = L.layerGroup().addTo(map),
       gruppeRot = L.layerGroup().addTo(map),
       gruppeGrau = L.layerGroup().addTo(map),
-      gruppeGelb = L.layerGroup().addTo(map),
+      gruppeRosa = L.layerGroup().addTo(map),
       kundenGruppe = L.layerGroup().addTo(map);
 
 let werke = [];
@@ -102,7 +102,7 @@ Papa.parse(sheetUrl, {
     const gueltigePreise = werke.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
     const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
 
-    // 👉 Firmen ohne Preis erhalten Durchschnitt und werden gelb markiert
+    // 👉 Firmen ohne Preis erhalten Durchschnitt und werden rosa markiert
     werke = werke.map(w => {
       if (isNaN(w.preis) || w.preis <= 0) {
         w.preis = parseFloat(durchschnitt.toFixed(2));
@@ -192,7 +192,7 @@ function handleMarkerClick(label, coord) {
 }
 
 async function buildMap(onlyMissing = false) {
-  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,gruppeGelb,kundenGruppe].forEach(g => g.clearLayers());
+  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,gruppeRosa,kundenGruppe].forEach(g => g.clearLayers());
 
   // Firmenmarker
   for (const w of werke) {
@@ -204,7 +204,7 @@ async function buildMap(onlyMissing = false) {
         await delay(1000);
       }
       if (c) {
-        let f = w.durchschnitt ? 'yellow' : colorForPrice(w.preis);
+        let f = w.durchschnitt ? '#ff66b3' : colorForPrice(w.preis); // rosa Farbcode
         const t = w.durchschnitt
           ? `<b>${w.preis} €</b> (Durchschnitt)`
           : `<b>${w.preis} €</b>`;
@@ -214,7 +214,7 @@ async function buildMap(onlyMissing = false) {
         .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
         .on('click', () => handleMarkerClick(w.firma, c));
 
-        if (w.durchschnitt) marker.addTo(gruppeGelb);
+        if (w.durchschnitt) marker.addTo(gruppeRosa);
         else if (f === 'green') marker.addTo(gruppeGruen);
         else if (f === 'orange') marker.addTo(gruppeOrange);
         else if (f === 'red') marker.addTo(gruppeRot);
@@ -253,7 +253,7 @@ function updateLayers() {
   if (chkOrange.checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
   if (chkRot.checked) map.addLayer(gruppeRot); else map.removeLayer(gruppeRot);
   if (chkGrau.checked) map.addLayer(gruppeGrau); else map.removeLayer(gruppeGrau);
-  if (chkGelb.checked) map.addLayer(gruppeGelb); else map.removeLayer(gruppeGelb);
+  if (chkRosa.checked) map.addLayer(gruppeRosa); else map.removeLayer(gruppeRosa);
   if (chkKunden.checked) map.addLayer(kundenGruppe); else map.removeLayer(kundenGruppe);
 }
 document.addEventListener('change', e => {
