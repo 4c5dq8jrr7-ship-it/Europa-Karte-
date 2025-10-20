@@ -108,7 +108,7 @@ Papa.parse(sheetUrl, {
       preis: parseFloat(row.preis)
     }));
 
-    // Durchschnittspreis berechnen
+    // Durchschnitt aller gültigen Preise berechnen
     const gueltigePreise = werke.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
     const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
 
@@ -122,20 +122,13 @@ Papa.parse(sheetUrl, {
     });
 
     await buildMap();
-    updateLayers(); // beim Start aktivieren
+    updateLayers(); // ← wichtig: jetzt Layer wirklich anzeigen
   }
 });
 
-// === Routing mit Preisberechnung ===
+// === Routing ===
 let selectedPoints = [];
 let routeLine = null;
-
-function formatDuration(minutesTotal) {
-  const hours = Math.floor(minutesTotal / 60);
-  const minutes = Math.round(minutesTotal % 60);
-  if (hours > 0) return `${hours} h ${minutes} min`;
-  return `${minutes} min`;
-}
 
 async function showRoute(a, b) {
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
@@ -146,7 +139,7 @@ async function showRoute(a, b) {
   const route = data.routes[0];
   const dist = (route.distance / 1000).toFixed(1);
   const durationMin = route.duration / 60;
-  const durationStr = formatDuration(durationMin);
+  const durationStr = `${Math.floor(durationMin / 60)} h ${Math.round(durationMin % 60)} min`;
   const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
   const preisProKm = dist < 250 ? 2.15 : 1.85;
@@ -170,7 +163,6 @@ async function showRoute(a, b) {
       <b>Route:</b> ${a.label} ↔ ${b.label}<br>
       <b>Entfernung:</b> ${dist} km<br>
       <b>Dauer:</b> ${durationStr}<br>
-      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
       <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €${durchschnittsHinweis}<br>
       <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
     `)
@@ -196,11 +188,10 @@ async function buildMap() {
     try {
       let c = geoCache[w.ort] || await geocode(w.ort);
       const f = w.durchschnitt ? '#ff66b3' : colorForPrice(w.preis);
-      const text = w.durchschnitt ? `${w.preis} € (Durchschnitt)` : `${w.preis} €`;
+      const t = w.durchschnitt ? `${w.preis} € (Durchschnitt)` : `${w.preis} €`;
       const marker = L.circleMarker([c.lat, c.lon], { radius: 8, color: f, fillColor: f, fillOpacity: 0.85 })
-        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br><b>${text}</b>`, { sticky: true })
+        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br><b>${t}</b>`, { sticky: true })
         .on('click', () => handleMarkerClick(w.firma, c));
-
       if (w.durchschnitt) marker.addTo(gruppeRosa);
       else if (f === 'green') marker.addTo(gruppeGruen);
       else if (f === 'orange') marker.addTo(gruppeOrange);
@@ -219,11 +210,9 @@ async function buildMap() {
       marker.addTo(kundenGruppe);
     } catch (e) { console.error(e); }
   }
-
-  updateLayers(); // Kunden sichtbar machen!
 }
 
-// === Layer-Update ===
+// === Layersteuerung ===
 function updateLayers() {
   const layers = {
     chkGruen: gruppeGruen,
@@ -234,11 +223,13 @@ function updateLayers() {
     chkKunden: kundenGruppe
   };
   for (const [id, layer] of Object.entries(layers)) {
-    if (document.getElementById(id).checked) map.addLayer(layer);
+    const box = document.getElementById(id);
+    if (box && box.checked) map.addLayer(layer);
     else map.removeLayer(layer);
   }
 }
 
+// Checkbox-Reaktionen
 document.querySelectorAll('.legend input[type="checkbox"]').forEach(cb => {
   cb.addEventListener('change', updateLayers);
 });
