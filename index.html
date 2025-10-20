@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte (mit schwarzer Route + Stundenanzeige)</title>
+  <title>Pelletwerke – Europa Preiskarte (mit schwarzer Route + Kostenberechnung)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
@@ -37,8 +37,8 @@
     <summary>Hinweise & Status</summary>
     <div style="margin-top:6px">
       • Preise werden automatisch aus Google Sheets geladen.<br>
-      • Klick auf zwei Punkte zeigt die **schnellste Route (schwarze Linie)**.<br>
-      • Fahrzeit wird in Stunden und Minuten angezeigt.<br>
+      • Klick auf zwei Punkte zeigt die <b>schnellste Route (blaue Linie)</b>.<br>
+      • Fahrzeit und Kosten werden berechnet.<br>
     </div>
     <div style="margin-top:8px">
       <button class="small" id="retryBtn">Fehlende Orte neu suchen</button>
@@ -133,6 +133,7 @@ function formatDuration(minutesTotal) {
   return `${minutes} min`;
 }
 
+// === Hier ist die neue Funktion mit Kostenberechnung ===
 async function showRoute(a, b) {
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -145,14 +146,23 @@ async function showRoute(a, b) {
     const durationStr = formatDuration(durationMin);
     const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
+    // 👉 Berechnung der Kosten je nach Distanz
+    let preisProKm = dist < 250 ? 2.15 : 1.85;
+    const kosten = (dist * preisProKm).toFixed(2);
+
     if (routeLine) map.removeLayer(routeLine);
-    // 👉 Schwarze Route zeichnen
     routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
 
     const mid = coords[Math.floor(coords.length / 2)];
     L.popup()
       .setLatLng(mid)
-      .setContent(`<b>Route:</b> ${a.label} ↔ ${b.label}<br><b>Entfernung:</b> ${dist} km<br><b>Dauer:</b> ${durationStr}`)
+      .setContent(`
+        <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+        <b>Entfernung:</b> ${dist} km<br>
+        <b>Dauer:</b> ${durationStr}<br>
+        <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+        <b>Gesamtkosten:</b> <span style="color:green">${kosten} €</span>
+      `)
       .openOn(map);
 
     map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
@@ -161,9 +171,9 @@ async function showRoute(a, b) {
   }
 }
 
+// Klick auf Marker → Route zwischen zwei Punkten
 function handleMarkerClick(label, coord) {
   selectedPoints.push({ label, coord });
-
   if (selectedPoints.length === 2) {
     const [a, b] = selectedPoints;
     showRoute(a, b);
@@ -171,11 +181,12 @@ function handleMarkerClick(label, coord) {
   }
 }
 
+// === Karte aufbauen ===
 async function buildMap(onlyMissing = false) {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
   statusBox.innerHTML = '';
 
-  // === Firmen-Marker ===
+  // Firmenmarker
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
     try {
@@ -188,10 +199,7 @@ async function buildMap(onlyMissing = false) {
         const f = colorForPrice(w.preis);
         const t = w.preis > 0 ? `<b>${w.preis} €</b>` : `<i style="color:gray">kein Preis</i>`;
         const marker = L.circleMarker([c.lat, c.lon], {
-          radius: 8,
-          color: f,
-          fillColor: f,
-          fillOpacity: 0.85
+          radius: 8, color: f, fillColor: f, fillOpacity: 0.85
         })
         .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
         .on('click', () => handleMarkerClick(w.firma, c));
@@ -208,7 +216,7 @@ async function buildMap(onlyMissing = false) {
     }
   }
 
-  // === Kunden-Marker ===
+  // Kundenmarker
   for (const k of kunden) {
     try {
       let c = geoCache[k.ort];
