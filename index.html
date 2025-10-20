@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte (mit Routing)</title>
+  <title>Pelletwerke – Europa Preiskarte (mit schwarzer Route)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
@@ -37,7 +37,7 @@
     <summary>Hinweise & Status</summary>
     <div style="margin-top:6px">
       • Preise werden automatisch aus Google Sheets geladen.<br>
-      • Klick auf zwei Punkte zeigt die Fahrroute (nicht Luftlinie).<br>
+      • Klick auf zwei Punkte zeigt die **schnellste Route (schwarze Linie)**.<br>
     </div>
     <div style="margin-top:8px">
       <button class="small" id="retryBtn">Fehlende Orte neu suchen</button>
@@ -120,7 +120,7 @@ Papa.parse(sheetUrl, {
   }
 });
 
-// === Routing (echte Straßenstrecke über OSRM) ===
+// === Routing (schnellste Straßenstrecke) ===
 let selectedPoints = [];
 let routeLine = null;
 
@@ -136,7 +136,8 @@ async function showRoute(a, b) {
     const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
     if (routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
+    // 👉 Schwarze Route zeichnen
+    routeLine = L.polyline(coords, { color: 'black', weight: 5, opacity: 0.8 }).addTo(map);
 
     const mid = coords[Math.floor(coords.length / 2)];
     L.popup()
@@ -219,7 +220,7 @@ async function buildMap(onlyMissing = false) {
   }
 }
 
-// Karte-Klick löscht Route
+// Klick auf Karte entfernt Route
 map.on('click', () => {
   if (routeLine) {
     map.removeLayer(routeLine);
