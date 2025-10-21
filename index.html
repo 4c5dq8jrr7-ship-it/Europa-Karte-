@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte (mit Durchschnitt & korrekter Berechnung)</title>
+  <title>Pelletwerke – Europa Preiskarte (korrekte Preislogik + Grau bleibt)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
@@ -36,7 +36,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
 }).addTo(map);
 
 function colorForPrice(p, hatKeinenPreis) {
-  if (hatKeinenPreis) return '#9e9e9e';
+  if (hatKeinenPreis) return '#9e9e9e'; // Grau für Durchschnitt
   if (!p || p <= 0) return '#9e9e9e';
   if (p <= 260) return 'green';
   if (p < 285) return 'orange';
@@ -57,6 +57,7 @@ async function geocode(q) {
   }
   throw new Error('kein Treffer für ' + q);
 }
+
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // === Kunden ===
@@ -64,7 +65,7 @@ const kunden = [
   { name: "Holzhof Dresden GmbH", ort: "01099 Dresden, Deutschland" },
   { name: "Maier & Korduletsch Energie GmbH", ort: "94474 Vilshofen, Deutschland" },
   { name: "Hubert Heitmann GmbH", ort: "21514 Büchen, Deutschland" },
-  { name: "Hellmuth Mineralöl GmbH & Co. KG", ort: "02730 Ebersbach-Neugersdorf, Deutschland" },
+  { name: "Hellmuth Mineralöl GmbH & Co. KG", ort: "02730 Ebersbach-Neugersdorf, Deutschland" },  
   { name: "Hessenmühle GmbH & Co. KG", ort: "56459 Gemünden, Deutschland" },
   { name: "Wilhelm hoyer GmbH & Co. KG", ort: "37154 Northeim, Deutschland" },
   { name: "Kleeschulte GmbH & Co. KG", ort: "33142 Büren, Deutschland" },
@@ -93,7 +94,7 @@ const gruppeGruen = L.layerGroup().addTo(map),
 
 let werke = [];
 
-// === Google Sheets laden + Durchschnitt für fehlende Preise ===
+// === Google Sheets laden + Durchschnitt berechnen ===
 const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
 
 async function ladeUndBerechne() {
@@ -111,7 +112,6 @@ async function ladeUndBerechne() {
         const gueltigePreise = werke.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
         const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
 
-        // Fehlende Preise ersetzen, bleiben aber grau
         werke = werke.map(w => {
           if (isNaN(w.preis) || w.preis <= 0) {
             w.preis = parseFloat(durchschnitt.toFixed(2));
@@ -135,7 +135,6 @@ async function initialisiereKarte() {
   updateLayers();
 }
 
-// === Automatisch alle 5 Minuten aktualisieren ===
 setInterval(async () => {
   console.log("🔄 Preise neu laden...");
   await ladeUndBerechne();
@@ -156,20 +155,20 @@ async function showRoute(a, b) {
     const dist = (route.distance / 1000).toFixed(1);
     const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
-    let preisProKm = dist < 250 ? 2.15 : 1.85;
+    // Preis pro km nach Distanz
+    const preisProKm = dist < 250 ? 2.15 : 1.85;
 
-    // Firmenpreis aus Liste holen
-    let firmenPreis = 0;
+    // Richtige Firma finden, egal welche Seite
     const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-    if (firmeneintrag) firmenPreis = firmeneintrag.preis;
+    const firmenPreis = firmeneintrag ? firmeneintrag.preis : 0;
 
-    // 🔹 KORREKTE FORMEL wie vorher
+    // 🔹 KORREKTE FORMEL WIE VORHER
     const teilstrecke = dist / 24;
     const berechnung = teilstrecke * preisProKm;
     const gesamt = (berechnung + firmenPreis + 1.05).toFixed(2);
 
     if (routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords, { color: 'blue', weight: 5 }).addTo(map);
+    routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
 
     const mid = coords[Math.floor(coords.length / 2)];
     L.popup()
@@ -182,6 +181,8 @@ async function showRoute(a, b) {
         <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
       `)
       .openOn(map);
+
+    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
   }
 }
 
@@ -193,7 +194,6 @@ function handleMarkerClick(label, coord) {
   }
 }
 
-// === Karte aufbauen ===
 async function buildMap() {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
 
@@ -211,7 +211,6 @@ async function buildMap() {
     else if (farbe === 'red') marker.addTo(gruppeRot);
   }
 
-  // Kunden
   for (const k of kunden) {
     const c = geoCache[k.ort] || await geocode(k.ort);
     const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
