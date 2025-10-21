@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -59,6 +59,23 @@ async function geocode(q) {
 }
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// === Kunden ===
+const kunden = [
+  { name: "Holzhof Dresden GmbH", ort: "01099 Dresden, Deutschland" },
+  { name: "Maier & Korduletsch Energie GmbH", ort: "94474 Vilshofen, Deutschland" },
+  { name: "Hubert Heitmann GmbH", ort: "21514 Büchen, Deutschland" },
+  { name: "Hellmuth Mineralöl GmbH & Co. KG", ort: "02730 Ebersbach-Neugersdorf, Deutschland" },  
+  { name: "Hessenmühle GmbH & Co. KG", ort: "56459 Gemünden, Deutschland" },
+  { name: "Wilhelm hoyer GmbH & Co. KG", ort: "37154 Northeim, Deutschland" },
+  { name: "Kleeschulte GmbH & Co. KG", ort: "33142 Büren, Deutschland" },
+  { name: "Horst Korb GmbH", ort: "55765 Birkenfeld, Deutschland" },
+  { name: "Landhandel Niehues GmbH & Co. KG", ort: "48720 Rosendahl, Deutschland" },
+  { name: "Maurath Brennstoffe GmbH & Co. KG", ort: "77815 Bühl, Deutschland" },
+  { name: "ZE Holzsysteme Vertriebsges.mnH", ort: "8234 Bad Feilnbach, Deutschland" },
+  { name: "Dlask GmbH", ort: "82269 Geltendorf, Deutschland" },
+  { name: "Fritz Wahr Energie GmbH & Co. KG", ort: "72202 Nagold, Deutschland" }
+];
+
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -78,11 +95,6 @@ let werke = [];
 
 // === Google Sheets einlesen ===
 const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-const kundenUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1656149918";
-
-let werke =  [];
-let kunden =  [];
-  
 Papa.parse(sheetUrl, {
   download: true,
   header: true,
@@ -91,20 +103,11 @@ Papa.parse(sheetUrl, {
       firma: row.firma,
       ort: row.ort,
       preis: parseFloat(row.preis)
-  }));
-
-     // Danach gleich die Kunden laden
-    Papa.parse(kundenUrl, {
-      download: true,
-      header: true,
-      complete: function(res2) {
-        kunden = res2.data.map(row => ({
-          name: row.name,
-          ort: row.ort
-        }));
-        buildMap(); // Karte erst bauen, wenn beides fertig ist
-      }
-    });
+    }));
+    buildMap();
+  },
+  error: function(err) {
+    console.error("Fehler beim Laden der Tabelle:", err);
   }
 });
 
