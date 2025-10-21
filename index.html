@@ -95,6 +95,11 @@ let werke = [];
 
 // === Google Sheets einlesen ===
 const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+const kundenUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1656149918";
+
+let werke =  [];
+let kunden =  [];
+  
 Papa.parse(sheetUrl, {
   download: true,
   header: true,
@@ -103,11 +108,20 @@ Papa.parse(sheetUrl, {
       firma: row.firma,
       ort: row.ort,
       preis: parseFloat(row.preis)
-    }));
-    buildMap();
-  },
-  error: function(err) {
-    console.error("Fehler beim Laden der Tabelle:", err);
+  }));
+
+     // Danach gleich die Kunden laden
+    Papa.parse(kundenUrl, {
+      download: true,
+      header: true,
+      complete: function(res2) {
+        kunden = res2.data.map(row => ({
+          name: row.name,
+          ort: row.ort
+        }));
+        buildMap(); // Karte erst bauen, wenn beides fertig ist
+      }
+    });
   }
 });
 
