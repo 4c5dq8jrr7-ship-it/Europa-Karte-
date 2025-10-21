@@ -3,17 +3,18 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte (korrekte Preislogik + Grau bleibt)</title>
+  <title>Pelletwerke – Europa Preiskarte</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     html,body{height:100%;margin:0}
     #map{width:100%;height:100%}
-    .legend{
-      position:absolute;z-index:1000;background:#fff;padding:8px 10px;
+    .legend{position:absolute;z-index:1000;background:#fff;padding:8px 10px;
       border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.12);
-      font:14px/1.3 system-ui,Arial,sans-serif;bottom:12px;right:12px
-    }
+      font:14px/1.3 system-ui,Arial,sans-serif;bottom:12px;right:12px}
+    .legend i{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-2px}
+    button.small{padding:6px 10px;border-radius:6px;border:1px solid #ddd;background:#f5f5f5;cursor:pointer}
+    button.small:hover{background:#eee}
   </style>
 </head>
 <body>
@@ -24,7 +25,7 @@
   <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
   <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
   <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
-  <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis (Durchschnitt)</label><br>
+  <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label><br>
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label>
 </div>
 
@@ -35,8 +36,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   minZoom:4, maxZoom:10, attribution: '&copy; OpenStreetMap'
 }).addTo(map);
 
-function colorForPrice(p, hatKeinenPreis) {
-  if (hatKeinenPreis) return '#9e9e9e'; // Grau für Durchschnitt
+function colorForPrice(p) {
   if (!p || p <= 0) return '#9e9e9e';
   if (p <= 260) return 'green';
   if (p < 285) return 'orange';
@@ -57,7 +57,6 @@ async function geocode(q) {
   }
   throw new Error('kein Treffer für ' + q);
 }
-
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // === Kunden ===
@@ -94,78 +93,61 @@ const gruppeGruen = L.layerGroup().addTo(map),
 
 let werke = [];
 
-// === Google Sheets laden + Durchschnitt berechnen ===
+// === Google Sheets einlesen ===
 const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+Papa.parse(sheetUrl, {
+  download: true,
+  header: true,
+  complete: function(results) {
+    werke = results.data.map(row => ({
+      firma: row.firma,
+      ort: row.ort,
+      preis: parseFloat(row.preis)
+    }));
+    buildMap();
+  },
+  error: function(err) {
+    console.error("Fehler beim Laden der Tabelle:", err);
+  }
+});
 
-async function ladeUndBerechne() {
-  return new Promise((resolve, reject) => {
-    Papa.parse(sheetUrl, {
-      download: true,
-      header: true,
-      complete: function(results) {
-        werke = results.data.map(row => ({
-          firma: row.firma,
-          ort: row.ort,
-          preis: parseFloat(row.preis)
-        }));
-
-        const gueltigePreise = werke.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
-        const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
-
-        werke = werke.map(w => {
-          if (isNaN(w.preis) || w.preis <= 0) {
-            w.preis = parseFloat(durchschnitt.toFixed(2));
-            w.hatKeinenPreis = true;
-          } else {
-            w.hatKeinenPreis = false;
-          }
-          return w;
-        });
-
-        resolve(werke);
-      },
-      error: reject
-    });
-  });
-}
-
-async function initialisiereKarte() {
-  await ladeUndBerechne();
-  buildMap();
-  updateLayers();
-}
-
-setInterval(async () => {
-  console.log("🔄 Preise neu laden...");
-  await ladeUndBerechne();
-  buildMap();
-}, 300000);
-
-// === Routing ===
+// === Routing mit Preisberechnung ===
 let selectedPoints = [];
 let routeLine = null;
+
+function formatDuration(minutesTotal) {
+  const hours = Math.floor(minutesTotal / 60);
+  const minutes = Math.round(minutesTotal % 60);
+  if (hours > 0) return `${hours} h ${minutes} min`;
+  return `${minutes} min`;
+}
 
 async function showRoute(a, b) {
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
   const data = await res.json();
 
-  if (data.routes.length) {
+  if (data.routes && data.routes.length) {
     const route = data.routes[0];
     const dist = (route.distance / 1000).toFixed(1);
+    const durationMin = route.duration / 60;
+    const durationStr = formatDuration(durationMin);
     const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
-    // Preis pro km nach Distanz
-    const preisProKm = dist < 250 ? 2.15 : 1.85;
+    // Preislogik
+    let preisProKm = dist < 250 ? 2.15 : 1.85;
 
-    // Richtige Firma finden, egal welche Seite
+    // Firmenpreis finden
+    let firmenPreis = 0;
     const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-    const firmenPreis = firmeneintrag ? firmeneintrag.preis : 0;
+    if (firmeneintrag && !isNaN(firmeneintrag.preis)) {
+      firmenPreis = firmeneintrag.preis;
+    }
 
-    // 🔹 KORREKTE FORMEL WIE VORHER
+    // Gesamtpreis berechnen: (km ÷ 24) × Preis + Firmenpreis + 1,05
     const teilstrecke = dist / 24;
     const berechnung = teilstrecke * preisProKm;
-    const gesamt = (berechnung + firmenPreis + 1.05).toFixed(2);
+    const gesamt = ((berechnung + firmenPreis) * 1.05).toFixed(2);
 
     if (routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
@@ -176,51 +158,82 @@ async function showRoute(a, b) {
       .setContent(`
         <b>Route:</b> ${a.label} ↔ ${b.label}<br>
         <b>Entfernung:</b> ${dist} km<br>
+        <b>Dauer:</b> ${durationStr}<br>
         <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-        <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €<br>
+        <b>Firmenpreis:</b> ${firmenPreis ? firmenPreis.toFixed(2) + ' €' : '–'}<br>
         <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
       `)
       .openOn(map);
 
     map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+  } else {
+    alert("Keine Route gefunden!");
   }
 }
 
 function handleMarkerClick(label, coord) {
   selectedPoints.push({ label, coord });
   if (selectedPoints.length === 2) {
-    showRoute(selectedPoints[0], selectedPoints[1]);
+    const [a, b] = selectedPoints;
+    showRoute(a, b);
     selectedPoints = [];
   }
 }
 
-async function buildMap() {
+async function buildMap(onlyMissing = false) {
   [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
 
+  // Firmenmarker
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
-    const c = geoCache[w.ort] || await geocode(w.ort);
-    const farbe = colorForPrice(w.preis, w.hatKeinenPreis);
-    const marker = L.circleMarker([c.lat, c.lon], { radius: 8, color: farbe, fillColor: farbe, fillOpacity: 0.85 })
-      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br><b>${w.preis} €</b>`, { sticky: true })
-      .on('click', () => handleMarkerClick(w.firma, c));
+    try {
+      let c = geoCache[w.ort];
+      if (!c && !onlyMissing) {
+        c = await geocode(w.ort);
+        await delay(1000);
+      }
+      if (c) {
+        const f = colorForPrice(w.preis);
+        const t = w.preis > 0 ? `<b>${w.preis} €</b>` : `<i style="color:gray">kein Preis</i>`;
+        const marker = L.circleMarker([c.lat, c.lon], {
+          radius: 8, color: f, fillColor: f, fillOpacity: 0.85
+        })
+        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
+        .on('click', () => handleMarkerClick(w.firma, c));
 
-    if (w.hatKeinenPreis) marker.addTo(gruppeGrau);
-    else if (farbe === 'green') marker.addTo(gruppeGruen);
-    else if (farbe === 'orange') marker.addTo(gruppeOrange);
-    else if (farbe === 'red') marker.addTo(gruppeRot);
+        if (f === 'green') marker.addTo(gruppeGruen);
+        else if (f === 'orange') marker.addTo(gruppeOrange);
+        else if (f === 'red') marker.addTo(gruppeRot);
+        else marker.addTo(gruppeGrau);
+      }
+    } catch (e) { console.error(e); }
   }
 
+  // Kundenmarker
   for (const k of kunden) {
-    const c = geoCache[k.ort] || await geocode(k.ort);
-    const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
-      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
-      .on('click', () => handleMarkerClick(k.name, c));
-    marker.addTo(kundenGruppe);
+    try {
+      let c = geoCache[k.ort];
+      if (!c && !onlyMissing) {
+        c = await geocode(k.ort);
+        await delay(1000);
+      }
+      if (c) {
+        const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
+          .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
+          .on('click', () => handleMarkerClick(k.name, c));
+        marker.addTo(kundenGruppe);
+      }
+    } catch (e) { console.error(e); }
   }
 }
 
-// === Filter ===
+map.on('click', () => {
+  if (routeLine) {
+    map.removeLayer(routeLine);
+    routeLine = null;
+  }
+});
+
 function updateLayers() {
   if (chkGruen.checked) map.addLayer(gruppeGruen); else map.removeLayer(gruppeGruen);
   if (chkOrange.checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
@@ -228,9 +241,9 @@ function updateLayers() {
   if (chkGrau.checked) map.addLayer(gruppeGrau); else map.removeLayer(gruppeGrau);
   if (chkKunden.checked) map.addLayer(kundenGruppe); else map.removeLayer(kundenGruppe);
 }
-document.addEventListener('change', e => { if (e.target.type === 'checkbox') updateLayers(); });
-
-initialisiereKarte();
+document.addEventListener('change', e => {
+  if (e.target.type === 'checkbox') updateLayers();
+});
 </script>
 </body>
 </html>
