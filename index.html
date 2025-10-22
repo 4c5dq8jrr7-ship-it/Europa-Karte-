@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -12,7 +12,6 @@
     .legend{position:absolute;z-index:1000;background:#fff;padding:8px 10px;
       border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.12);
       font:14px/1.3 system-ui,Arial,sans-serif;bottom:12px;right:12px}
-    .legend i{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-2px}
   </style>
 </head>
 <body>
@@ -29,24 +28,31 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const map = L.map('map').setView([51,11],5);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  minZoom:4, maxZoom:10, attribution: '&copy; OpenStreetMap'
+const map = L.map("map").setView([51, 11], 5);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  minZoom: 4,
+  maxZoom: 10,
+  attribution: "&copy; OpenStreetMap",
 }).addTo(map);
 
+// === Farben-Logik ===
 function colorForPrice(p, hatKeinenPreis) {
-  if (hatKeinenPreis) return '#9e9e9e'; // Grau bleibt grau
-  if (!p || p <= 0) return '#9e9e9e';
-  if (p <= 260) return 'green';
-  if (p < 285) return 'orange';
-  return 'red';
+  if (hatKeinenPreis) return "#9e9e9e";
+  if (!p || p <= 0) return "#9e9e9e";
+  if (p <= 260) return "green";
+  if (p < 285) return "orange";
+  return "red";
 }
 
-const CACHE_KEY = 'geoCachePellets_EU';
-const geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+// === Geocoding-Cache ===
+const CACHE_KEY = "geoCachePellets_EU";
+const geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+
 async function geocode(q) {
   if (geoCache[q]) return geoCache[q];
-  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&accept-language=de`);
+  const r = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&accept-language=de`
+  );
   const d = await r.json();
   if (d && d.length) {
     const { lat, lon } = d[0];
@@ -54,53 +60,62 @@ async function geocode(q) {
     localStorage.setItem(CACHE_KEY, JSON.stringify(geoCache));
     return geoCache[q];
   }
-  throw new Error('kein Treffer für ' + q);
+  console.warn("⚠️ Kein Treffer für:", q);
+  return null;
 }
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+function delay(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// === Icons ===
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
            <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
          </svg>`,
-  iconAnchor: [12,22],
-  popupAnchor: [0,-20]
+  iconAnchor: [12, 22],
+  popupAnchor: [0, -20],
 });
 
+// === Layer ===
 const gruppeGruen = L.layerGroup().addTo(map),
-      gruppeOrange = L.layerGroup().addTo(map),
-      gruppeRot = L.layerGroup().addTo(map),
-      gruppeGrau = L.layerGroup().addTo(map),
-      kundenGruppe = L.layerGroup().addTo(map);
+  gruppeOrange = L.layerGroup().addTo(map),
+  gruppeRot = L.layerGroup().addTo(map),
+  gruppeGrau = L.layerGroup().addTo(map),
+  kundenGruppe = L.layerGroup().addTo(map);
 
 let werke = [];
 let kunden = [];
 
-// === Google Sheets für Firmen (Preise) ===
-const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-// === Google Sheets für Kunden ===
-const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
+// === Tabellen-Links ===
+const sheetUrlFirmen =
+  "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+const sheetUrlKunden =
+  "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
 
 // === Daten laden ===
 async function ladeDaten() {
-  // Firmen laden
+  console.log("⏳ Lade Daten aus Google Sheets...");
+
+  // Firmen
   const firmenPromise = new Promise((resolve, reject) => {
     Papa.parse(sheetUrlFirmen, {
       download: true,
       header: true,
-      complete: function(results) {
-        const daten = results.data.map(row => ({
+      complete: (results) => {
+        const daten = results.data.map((row) => ({
           firma: row.firma,
           ort: row.ort,
-          preis: parseFloat(row.preis)
+          preis: parseFloat(row.preis),
         }));
 
-        // Durchschnitt berechnen
-        const gueltigePreise = daten.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
-        const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
+        // Durchschnitt
+        const gueltige = daten.filter((w) => !isNaN(w.preis) && w.preis > 0);
+        const durchschnitt =
+          gueltige.reduce((a, b) => a + b.preis, 0) / gueltige.length;
 
-        // Fehlende Preise mit Durchschnitt auffüllen
-        const werkeMitDurchschnitt = daten.map(w => {
+        const werkeMitDurchschnitt = daten.map((w) => {
           if (isNaN(w.preis) || w.preis <= 0) {
             w.preis = parseFloat(durchschnitt.toFixed(2));
             w.hatKeinenPreis = true;
@@ -112,155 +127,155 @@ async function ladeDaten() {
 
         resolve(werkeMitDurchschnitt);
       },
-      error: reject
+      error: reject,
     });
   });
 
-  // Kunden laden
+  // Kunden
   const kundenPromise = new Promise((resolve, reject) => {
     Papa.parse(sheetUrlKunden, {
       download: true,
       header: true,
-      complete: function(results) {
-        const daten = results.data.map(row => ({
-          name: row.name,
-          ort: row.ort
-        })).filter(k => k.name && k.ort);
+      complete: (results) => {
+        const daten = results.data
+          .map((row) => ({
+            name: row.name?.trim(),
+            ort: row.ort?.trim(),
+          }))
+          .filter((k) => k.name && k.ort);
+        console.log("✅ Kunden geladen:", daten.length);
         resolve(daten);
       },
-      error: reject
+      error: reject,
     });
   });
 
-  // Beide gleichzeitig laden
+  // Beide laden
   const [firmen, kundenListe] = await Promise.all([firmenPromise, kundenPromise]);
   werke = firmen;
   kunden = kundenListe;
+
+  console.log("✅ Firmen geladen:", werke.length);
+  console.log("✅ Kunden geladen:", kunden.length);
+
   buildMap();
 }
 
-// === Routing mit Preisberechnung ===
+// === Routing ===
 let selectedPoints = [];
 let routeLine = null;
-
-function formatDuration(minutesTotal) {
-  const hours = Math.floor(minutesTotal / 60);
-  const minutes = Math.round(minutesTotal % 60);
-  if (hours > 0) return `${hours} h ${minutes} min`;
-  return `${minutes} min`;
-}
 
 async function showRoute(a, b) {
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
   const data = await res.json();
 
-  if (data.routes && data.routes.length) {
+  if (data.routes?.length) {
     const route = data.routes[0];
     const dist = (route.distance / 1000).toFixed(1);
-    const durationMin = route.duration / 60;
-    const durationStr = formatDuration(durationMin);
-    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+    const coords = route.geometry.coordinates.map((c) => [c[1], c[0]]);
 
-    // Preislogik
     let preisProKm = dist < 250 ? 2.15 : 1.85;
 
-    // Firmenpreis finden
     let firmenPreis = 0;
-    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-    if (firmeneintrag && !isNaN(firmeneintrag.preis)) {
-      firmenPreis = firmeneintrag.preis;
-    }
+    const eintrag = werke.find((w) => w.firma === a.label || w.firma === b.label);
+    if (eintrag && !isNaN(eintrag.preis)) firmenPreis = eintrag.preis;
 
-    // Gesamtpreis berechnen (mit 5 % Aufschlag)
     const teilstrecke = dist / 24;
     const berechnung = teilstrecke * preisProKm;
     const gesamt = ((berechnung + firmenPreis) * 1.05).toFixed(2);
 
     if (routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords, { color: 'blue', weight: 5, opacity: 0.8 }).addTo(map);
+    routeLine = L.polyline(coords, { color: "blue", weight: 5, opacity: 0.8 }).addTo(map);
 
-    const mid = coords[Math.floor(coords.length / 2)];
     L.popup()
-      .setLatLng(mid)
-      .setContent(`
-        <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-        <b>Entfernung:</b> ${dist} km<br>
-        <b>Dauer:</b> ${durationStr}<br>
-        <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-        <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €<br>
-        <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
-      `)
+      .setLatLng(coords[Math.floor(coords.length / 2)])
+      .setContent(
+        `<b>Route:</b> ${a.label} ↔ ${b.label}<br>
+         <b>Entfernung:</b> ${dist} km<br>
+         <b>Preis pro km:</b> ${preisProKm} €<br>
+         <b>Firmenpreis:</b> ${firmenPreis} €<br>
+         <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>`
+      )
       .openOn(map);
-
-    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
-  } else {
-    alert("Keine Route gefunden!");
   }
 }
 
 function handleMarkerClick(label, coord) {
   selectedPoints.push({ label, coord });
   if (selectedPoints.length === 2) {
-    const [a, b] = selectedPoints;
-    showRoute(a, b);
+    showRoute(selectedPoints[0], selectedPoints[1]);
     selectedPoints = [];
   }
 }
 
-async function buildMap(onlyMissing = false) {
-  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
+// === Karte aufbauen ===
+async function buildMap() {
+  [gruppeGruen, gruppeOrange, gruppeRot, gruppeGrau, kundenGruppe].forEach((g) =>
+    g.clearLayers()
+  );
 
   // Firmenmarker
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
     try {
-      let c = geoCache[w.ort] || await geocode(w.ort);
+      const c = geoCache[w.ort] || (await geocode(w.ort));
+      if (!c) continue;
+
       const f = colorForPrice(w.preis, w.hatKeinenPreis);
       const t = w.hatKeinenPreis
         ? `<b>${w.preis} €</b> <i style="color:gray">(Durchschnitt)</i>`
         : `<b>${w.preis} €</b>`;
+
       const marker = L.circleMarker([c.lat, c.lon], {
-        radius: 8, color: f, fillColor: f, fillOpacity: 0.85
+        radius: 8,
+        color: f,
+        fillColor: f,
+        fillOpacity: 0.85,
       })
-      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
-      .on('click', () => handleMarkerClick(w.firma, c));
+        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
+        .on("click", () => handleMarkerClick(w.firma, c));
 
       if (w.hatKeinenPreis) marker.addTo(gruppeGrau);
-      else if (f === 'green') marker.addTo(gruppeGruen);
-      else if (f === 'orange') marker.addTo(gruppeOrange);
-      else if (f === 'red') marker.addTo(gruppeRot);
-    } catch (e) { console.error(e); }
+      else if (f === "green") marker.addTo(gruppeGruen);
+      else if (f === "orange") marker.addTo(gruppeOrange);
+      else if (f === "red") marker.addTo(gruppeRot);
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   // Kundenmarker
   for (const k of kunden) {
     try {
-      let c = geoCache[k.ort] || await geocode(k.ort);
+      const c = geoCache[k.ort] || (await geocode(k.ort));
+      if (!c) continue;
+
       const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
         .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
-        .on('click', () => handleMarkerClick(k.name, c));
+        .on("click", () => handleMarkerClick(k.name, c));
       marker.addTo(kundenGruppe);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
   }
 }
-
-map.on('click', () => {
-  if (routeLine) {
-    map.removeLayer(routeLine);
-    routeLine = null;
-  }
-});
 
 function updateLayers() {
-  if (chkGruen.checked) map.addLayer(gruppeGruen); else map.removeLayer(gruppeGruen);
-  if (chkOrange.checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
-  if (chkRot.checked) map.addLayer(gruppeRot); else map.removeLayer(gruppeRot);
-  if (chkGrau.checked) map.addLayer(gruppeGrau); else map.removeLayer(gruppeGrau);
-  if (chkKunden.checked) map.addLayer(kundenGruppe); else map.removeLayer(kundenGruppe);
+  if (chkGruen.checked) map.addLayer(gruppeGruen);
+  else map.removeLayer(gruppeGruen);
+  if (chkOrange.checked) map.addLayer(gruppeOrange);
+  else map.removeLayer(gruppeOrange);
+  if (chkRot.checked) map.addLayer(gruppeRot);
+  else map.removeLayer(gruppeRot);
+  if (chkGrau.checked) map.addLayer(gruppeGrau);
+  else map.removeLayer(gruppeGrau);
+  if (chkKunden.checked) map.addLayer(kundenGruppe);
+  else map.removeLayer(kundenGruppe);
 }
-document.addEventListener('change', e => {
-  if (e.target.type === 'checkbox') updateLayers();
+
+document.addEventListener("change", (e) => {
+  if (e.target.type === "checkbox") updateLayers();
 });
 
 // === Start ===
