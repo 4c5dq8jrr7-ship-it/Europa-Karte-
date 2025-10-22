@@ -58,23 +58,6 @@ async function geocode(q) {
 }
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// === Kunden ===
-const kunden = [
-  { name: "Holzhof Dresden GmbH", ort: "01099 Dresden, Deutschland" },
-  { name: "Maier & Korduletsch Energie GmbH", ort: "94474 Vilshofen, Deutschland" },
-  { name: "Hubert Heitmann GmbH", ort: "21514 Büchen, Deutschland" },
-  { name: "Hellmuth Mineralöl GmbH & Co. KG", ort: "02730 Ebersbach-Neugersdorf, Deutschland" },  
-  { name: "Hessenmühle GmbH & Co. KG", ort: "56459 Gemünden, Deutschland" },
-  { name: "Wilhelm hoyer GmbH & Co. KG", ort: "37154 Northeim, Deutschland" },
-  { name: "Kleeschulte GmbH & Co. KG", ort: "33142 Büren, Deutschland" },
-  { name: "Horst Korb GmbH", ort: "55765 Birkenfeld, Deutschland" },
-  { name: "Landhandel Niehues GmbH & Co. KG", ort: "48720 Rosendahl, Deutschland" },
-  { name: "Maurath Brennstoffe GmbH & Co. KG", ort: "77815 Bühl, Deutschland" },
-  { name: "ZE Holzsysteme Vertriebsges.mnH", ort: "8234 Bad Feilnbach, Deutschland" },
-  { name: "Dlask GmbH", ort: "82269 Geltendorf, Deutschland" },
-  { name: "Fritz Wahr Energie GmbH & Co. KG", ort: "72202 Nagold, Deutschland" }
-];
-
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -91,41 +74,70 @@ const gruppeGruen = L.layerGroup().addTo(map),
       kundenGruppe = L.layerGroup().addTo(map);
 
 let werke = [];
+let kunden = [];
 
-// === Google Sheets einlesen + Durchschnittslogik ===
-const sheetUrl = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+// === Google Sheets für Firmen (Preise) ===
+const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+// === Google Sheets für Kunden ===
+const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
 
-Papa.parse(sheetUrl, {
-  download: true,
-  header: true,
-  complete: function(results) {
-    werke = results.data.map(row => ({
-      firma: row.firma,
-      ort: row.ort,
-      preis: parseFloat(row.preis)
-    }));
+// === Daten laden ===
+async function ladeDaten() {
+  // Firmen laden
+  const firmenPromise = new Promise((resolve, reject) => {
+    Papa.parse(sheetUrlFirmen, {
+      download: true,
+      header: true,
+      complete: function(results) {
+        const daten = results.data.map(row => ({
+          firma: row.firma,
+          ort: row.ort,
+          preis: parseFloat(row.preis)
+        }));
 
-    // 👉 Durchschnitt aller gültigen Preise berechnen
-    const gueltigePreise = werke.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
-    const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
+        // Durchschnitt berechnen
+        const gueltigePreise = daten.filter(w => !isNaN(w.preis) && w.preis > 0).map(w => w.preis);
+        const durchschnitt = gueltigePreise.reduce((a,b) => a+b, 0) / gueltigePreise.length;
 
-    // 👉 Fehlende Preise mit Durchschnitt auffüllen, bleiben aber grau
-    werke = werke.map(w => {
-      if (isNaN(w.preis) || w.preis <= 0) {
-        w.preis = parseFloat(durchschnitt.toFixed(2));
-        w.hatKeinenPreis = true;
-      } else {
-        w.hatKeinenPreis = false;
-      }
-      return w;
+        // Fehlende Preise mit Durchschnitt auffüllen
+        const werkeMitDurchschnitt = daten.map(w => {
+          if (isNaN(w.preis) || w.preis <= 0) {
+            w.preis = parseFloat(durchschnitt.toFixed(2));
+            w.hatKeinenPreis = true;
+          } else {
+            w.hatKeinenPreis = false;
+          }
+          return w;
+        });
+
+        resolve(werkeMitDurchschnitt);
+      },
+      error: reject
     });
+  });
 
-    buildMap();
-  },
-  error: function(err) {
-    console.error("Fehler beim Laden der Tabelle:", err);
-  }
-});
+  // Kunden laden
+  const kundenPromise = new Promise((resolve, reject) => {
+    Papa.parse(sheetUrlKunden, {
+      download: true,
+      header: true,
+      complete: function(results) {
+        const daten = results.data.map(row => ({
+          name: row.name,
+          ort: row.ort
+        })).filter(k => k.name && k.ort);
+        resolve(daten);
+      },
+      error: reject
+    });
+  });
+
+  // Beide gleichzeitig laden
+  const [firmen, kundenListe] = await Promise.all([firmenPromise, kundenPromise]);
+  werke = firmen;
+  kunden = kundenListe;
+  buildMap();
+}
 
 // === Routing mit Preisberechnung ===
 let selectedPoints = [];
@@ -153,14 +165,14 @@ async function showRoute(a, b) {
     // Preislogik
     let preisProKm = dist < 250 ? 2.15 : 1.85;
 
-    // Firmenpreis finden (egal ob Kunde oder Firma zuerst)
+    // Firmenpreis finden
     let firmenPreis = 0;
     const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
     if (firmeneintrag && !isNaN(firmeneintrag.preis)) {
       firmenPreis = firmeneintrag.preis;
     }
 
-    // Gesamtpreis berechnen: (km ÷ 24) × Preis + Firmenpreis + 1,05
+    // Gesamtpreis berechnen (mit 5 % Aufschlag)
     const teilstrecke = dist / 24;
     const berechnung = teilstrecke * preisProKm;
     const gesamt = ((berechnung + firmenPreis) * 1.05).toFixed(2);
@@ -203,44 +215,32 @@ async function buildMap(onlyMissing = false) {
   for (const w of werke) {
     if (!w.firma || !w.ort) continue;
     try {
-      let c = geoCache[w.ort];
-      if (!c && !onlyMissing) {
-        c = await geocode(w.ort);
-        await delay(1000);
-      }
-      if (c) {
-        const f = colorForPrice(w.preis, w.hatKeinenPreis);
-        const t = w.hatKeinenPreis
-          ? `<b>${w.preis} €</b> <i style="color:gray">(Durchschnitt)</i>`
-          : `<b>${w.preis} €</b>`;
-        const marker = L.circleMarker([c.lat, c.lon], {
-          radius: 8, color: f, fillColor: f, fillOpacity: 0.85
-        })
-        .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
-        .on('click', () => handleMarkerClick(w.firma, c));
+      let c = geoCache[w.ort] || await geocode(w.ort);
+      const f = colorForPrice(w.preis, w.hatKeinenPreis);
+      const t = w.hatKeinenPreis
+        ? `<b>${w.preis} €</b> <i style="color:gray">(Durchschnitt)</i>`
+        : `<b>${w.preis} €</b>`;
+      const marker = L.circleMarker([c.lat, c.lon], {
+        radius: 8, color: f, fillColor: f, fillOpacity: 0.85
+      })
+      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
+      .on('click', () => handleMarkerClick(w.firma, c));
 
-        if (w.hatKeinenPreis) marker.addTo(gruppeGrau);
-        else if (f === 'green') marker.addTo(gruppeGruen);
-        else if (f === 'orange') marker.addTo(gruppeOrange);
-        else if (f === 'red') marker.addTo(gruppeRot);
-      }
+      if (w.hatKeinenPreis) marker.addTo(gruppeGrau);
+      else if (f === 'green') marker.addTo(gruppeGruen);
+      else if (f === 'orange') marker.addTo(gruppeOrange);
+      else if (f === 'red') marker.addTo(gruppeRot);
     } catch (e) { console.error(e); }
   }
 
   // Kundenmarker
   for (const k of kunden) {
     try {
-      let c = geoCache[k.ort];
-      if (!c && !onlyMissing) {
-        c = await geocode(k.ort);
-        await delay(1000);
-      }
-      if (c) {
-        const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
-          .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
-          .on('click', () => handleMarkerClick(k.name, c));
-        marker.addTo(kundenGruppe);
-      }
+      let c = geoCache[k.ort] || await geocode(k.ort);
+      const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
+        .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
+        .on('click', () => handleMarkerClick(k.name, c));
+      marker.addTo(kundenGruppe);
     } catch (e) { console.error(e); }
   }
 }
@@ -262,6 +262,9 @@ function updateLayers() {
 document.addEventListener('change', e => {
   if (e.target.type === 'checkbox') updateLayers();
 });
+
+// === Start ===
+ladeDaten();
 </script>
 </body>
 </html>
