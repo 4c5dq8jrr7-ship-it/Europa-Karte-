@@ -25,7 +25,7 @@
   <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
   <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
   <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
-  <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label><br>
+  <label><input type="checkbox" id="chkGrau" checked> ⚪ Durchschnitt</label><br>
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label>
 </div>
 
@@ -84,8 +84,8 @@ const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PH
 
 let werke = [], kunden = [];
 
-// Daten laden
 async function ladeDaten() {
+  // Firmen
   const firmenPromise = new Promise((resolve) => {
     Papa.parse(sheetUrlFirmen, {
       download: true,
@@ -115,6 +115,7 @@ async function ladeDaten() {
     });
   });
 
+  // Kunden
   const kundenPromise = new Promise((resolve) => {
     Papa.parse(sheetUrlKunden, {
       download: true,
@@ -141,39 +142,118 @@ async function ladeDaten() {
   kunden = kundenDaten;
 }
 
+// Route zeichnen + Preisberechnung
+let selectedPoints = [];
+let routeLine = null;
+
+function formatDuration(minutesTotal) {
+  const hours = Math.floor(minutesTotal / 60);
+  const minutes = Math.round(minutesTotal % 60);
+  if (hours > 0) return `${hours} h ${minutes} min`;
+  return `${minutes} min`;
+}
+
+async function showRoute(a, b) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+  const res = await fetch(url);
+  const data = await res.json();
+
+  if (data.routes && data.routes.length) {
+    const route = data.routes[0];
+    const dist = (route.distance / 1000).toFixed(1);
+    const durationMin = route.duration / 60;
+    const durationStr = formatDuration(durationMin);
+    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+    // Preislogik
+    const preisProKm = dist < 250 ? 2.15 : 1.85;
+
+    // Firmenpreis finden
+    let firmenPreis = 0;
+    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+    if (firmeneintrag && !isNaN(firmeneintrag.preis)) {
+      firmenPreis = firmeneintrag.preis;
+    }
+
+    // Gesamtpreis: ((km ÷ 24) × Preis/km + Firmenpreis) × 1,05
+    const teilstrecke = dist / 24;
+    const berechnung = teilstrecke * preisProKm;
+    const gesamt = ((berechnung + firmenPreis) * 1.05).toFixed(2);
+
+    if (routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(coords, { color: "blue", weight: 5, opacity: 0.8 }).addTo(map);
+
+    const mid = coords[Math.floor(coords.length / 2)];
+    L.popup()
+      .setLatLng(mid)
+      .setContent(`
+        <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+        <b>Entfernung:</b> ${dist} km<br>
+        <b>Dauer:</b> ${durationStr}<br>
+        <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+        <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €<br>
+        <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+      `)
+      .openOn(map);
+
+    map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+  } else {
+    alert("Keine Route gefunden!");
+  }
+}
+
+// Klick auf Marker
+function handleMarkerClick(label, coord) {
+  selectedPoints.push({ label, coord });
+  if (selectedPoints.length === 2) {
+    const [a, b] = selectedPoints;
+    showRoute(a, b);
+    selectedPoints = [];
+  }
+}
+
 // Karte aufbauen
 async function buildMap() {
-  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach((g) => g.clearLayers());
-  const bounds = L.latLngBounds();
+  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g => g.clearLayers());
 
-  // Firmen-Marker
+  // Firmenmarker
   for (const w of werke) {
     const c = geoCache[w.ort] || (await geocode(w.ort));
     if (!c) continue;
     const f = colorForPrice(w.preis, w.keinPreis);
-    const text = w.keinPreis ? `${w.preis.toFixed(2)} € (Durchschnitt)` : `${w.preis.toFixed(2)} €`;
-    const m = L.circleMarker([c.lat, c.lon], {
-      radius: 8, color: f, fillColor: f, fillOpacity: 0.85,
-    }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${text}`);
-    if (w.keinPreis) m.addTo(gruppeGrau);
-    else if (f === "green") m.addTo(gruppeGruen);
-    else if (f === "orange") m.addTo(gruppeOrange);
-    else if (f === "red") m.addTo(gruppeRot);
-    bounds.extend([c.lat, c.lon]);
+    const t = w.keinPreis
+      ? `<b>${w.preis.toFixed(2)} €</b> <i style="color:gray">(Durchschnitt)</i>`
+      : `<b>${w.preis.toFixed(2)} €</b>`;
+    const marker = L.circleMarker([c.lat, c.lon], {
+      radius: 8, color: f, fillColor: f, fillOpacity: 0.85
+    })
+    .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`, { sticky: true })
+    .on("click", () => handleMarkerClick(w.firma, c));
+
+    if (w.keinPreis) marker.addTo(gruppeGrau);
+    else if (f === "green") marker.addTo(gruppeGruen);
+    else if (f === "orange") marker.addTo(gruppeOrange);
+    else if (f === "red") marker.addTo(gruppeRot);
   }
 
-  // Kunden-Marker
+  // Kundenmarker
   for (const k of kunden) {
     const c = geoCache[k.ort] || (await geocode(k.ort));
     if (!c) continue;
-    const m = L.marker([c.lat, c.lon], { icon: blauesDreieck })
-      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`);
-    m.addTo(kundenGruppe);
-    bounds.extend([c.lat, c.lon]);
+    const marker = L.marker([c.lat, c.lon], { icon: blauesDreieck })
+      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`, { sticky: true })
+      .on("click", () => handleMarkerClick(k.name, c));
+    marker.addTo(kundenGruppe);
   }
-
-  if (bounds.isValid()) map.fitBounds(bounds.pad(0.15));
 }
+
+// Klick auf Karte = Route löschen
+map.on("click", () => {
+  if (routeLine) {
+    map.removeLayer(routeLine);
+    routeLine = null;
+  }
+});
 
 // Layer-Filter
 function updateLayers() {
