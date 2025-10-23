@@ -24,18 +24,6 @@
       width:220px;padding:6px 8px;border:1px solid #ccc;
       border-radius:4px;outline:none;
     }
-    /* 🟢 Neu: Anzeige für Durchschnitt */
-    .avg-box {
-      position:absolute;
-      z-index:1000;
-      background:#fff;
-      padding:8px 10px;
-      border-radius:6px;
-      box-shadow:0 2px 8px rgba(0,0,0,.12);
-      font:14px/1.3 system-ui,Arial,sans-serif;
-      bottom:12px;
-      right:180px; /* Position leicht links neben der Legende */
-    }
   </style>
 </head>
 <body>
@@ -52,11 +40,6 @@
   <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
   <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label><br>
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label>
-</div>
-
-<!-- 🟢 Neu: Durchschnittsanzeige -->
-<div class="avg-box" id="avgBox">
-  💶 Durchschnitt: wird geladen…
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -120,10 +103,6 @@ async function ladeDaten() {
         }));
         const gültige = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
         const avg = gültige.reduce((a,b)=>a+b.preis,0)/gültige.length;
-
-        /* 🟢 Neu: Durchschnitt im Infofeld anzeigen */
-        document.getElementById("avgBox").textContent = `💶 Durchschnitt: ${avg.toFixed(2)} €`;
-
         resolve(daten.map(w=>{
           if(isNaN(w.preis)||w.preis<=0){w.preis=avg;w.keinPreis=true;}else w.keinPreis=false;
           return w;
