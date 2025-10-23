@@ -164,12 +164,71 @@ async function showRoute(a,b){
   } else alert("Keine Route gefunden!");
 }
 
-function handleMarkerClick(label,coord){
-  selectedPoints.push({label,coord});
-  if(selectedPoints.length===2){
-    const [a,b]=selectedPoints;
-    showRoute(a,b);
-    selectedPoints=[];
+// ------------------------------------
+// NEUE FUNKTION: Klick auf Kunde = Durchschnittspreis berechnen
+// ------------------------------------
+async function handleMarkerClick(label, coord) {
+  const clicked = alleMarker.find(m => m.name === label);
+
+  // Wenn Kunde: Durchschnittspreis aus allen Firmen berechnen
+  if (clicked && clicked.type === "kunde") {
+    L.popup()
+      .setLatLng([coord.lat, coord.lon])
+      .setContent(`<b>${label}</b><br>⏳ Berechne Durchschnitt…`)
+      .openOn(map);
+
+    let gesamtPreise = [];
+    let distanzen = [];
+
+    for (const w of werke) {
+      const c = geoCache[w.ort] || await geocode(w.ort);
+      if (!c) continue;
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${c.lon},${c.lat};${coord.lon},${coord.lat}?overview=false`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.routes && data.routes.length) {
+          const route = data.routes[0];
+          const dist = route.distance / 1000;
+          const preisProKm = dist < 250 ? 2.15 : 1.85;
+          const teilstrecke = dist / 24;
+          const berechnung = teilstrecke * preisProKm;
+          const gesamt = (berechnung + w.preis) * 1.05;
+
+          gesamtPreise.push(gesamt);
+          distanzen.push(dist);
+        }
+      } catch (err) {
+        console.warn("Fehler bei Route:", w.firma, err);
+      }
+    }
+
+    if (gesamtPreise.length) {
+      const avgPreis = (gesamtPreise.reduce((a, b) => a + b, 0) / gesamtPreise.length).toFixed(2);
+      const avgDist = (distanzen.reduce((a, b) => a + b, 0) / distanzen.length).toFixed(1);
+
+      L.popup()
+        .setLatLng([coord.lat, coord.lon])
+        .setContent(`
+          <b>${label}</b><br>
+          Durchschnitt von ${gesamtPreise.length} Firmen:<br>
+          📏 Ø Entfernung: ${avgDist} km<br>
+          💶 Ø Gesamtpreis: <span style="color:green;font-size:1.2em">${avgPreis} €</span>
+        `)
+        .openOn(map);
+    } else {
+      alert("Keine Routen gefunden.");
+    }
+    return;
+  }
+
+  // Normales Verhalten (Kunde ↔ Firma Route zeigen)
+  selectedPoints.push({ label, coord });
+  if (selectedPoints.length === 2) {
+    const [a, b] = selectedPoints;
+    showRoute(a, b);
+    selectedPoints = [];
   }
 }
 
