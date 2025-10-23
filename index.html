@@ -48,9 +48,9 @@
 <!-- Linke Box für Zertifikate -->
 <div class="cert-box">
   <b>Zertifikate</b><br>
-  <label><input type="checkbox" id="chkEnPlus" checked> 🟩 EnPlus</label><br>
-  <label><input type="checkbox" id="chkDINplus" checked> 🟦 DINplus</label><br>
-  <label><input type="checkbox" id="chkSURE" checked> 🟨 SURE</label>
+  <label><input type="checkbox" id="chkEnPlus" checked> EnPlus</label><br>
+  <label><input type="checkbox" id="chkDINplus" checked> DINplus</label><br>
+  <label><input type="checkbox" id="chkSURE" checked> SURE</label>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -96,10 +96,7 @@ const gruppeGruen = L.layerGroup().addTo(map),
       gruppeOrange = L.layerGroup().addTo(map),
       gruppeRot = L.layerGroup().addTo(map),
       gruppeGrau = L.layerGroup().addTo(map),
-      kundenGruppe = L.layerGroup().addTo(map),
-      certEnPlus = L.layerGroup().addTo(map),
-      certDINplus = L.layerGroup().addTo(map),
-      certSURE = L.layerGroup().addTo(map);
+      kundenGruppe = L.layerGroup().addTo(map);
 
 const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
 const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
@@ -115,7 +112,7 @@ async function ladeDaten() {
           firma: x.firma.trim(),
           ort: x.ort.trim(),
           preis: parseFloat((x.preis || "0").replace(",", ".")),
-          zert: (x.zertifikate || x.Zertifikate || x.ZERTIFIKATE || "").trim()
+          zert: (x.Zertifikate || x.zertifikate || "").trim()
         }));
         const gültige = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
         const avg = gültige.reduce((a,b)=>a+b.preis,0)/gültige.length;
@@ -144,33 +141,23 @@ async function ladeDaten() {
 }
 
 function hatZertifikat(z, name){
-  return z.toLowerCase().includes(name.toLowerCase());
+  return z && z.toLowerCase().includes(name.toLowerCase());
 }
 
 async function buildMap(){
-  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe,certEnPlus,certDINplus,certSURE].forEach(g=>g.clearLayers());
+  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g=>g.clearLayers());
   const bounds=L.latLngBounds();
 
   for(const w of werke){
     const c=geoCache[w.ort]||await geocode(w.ort);
     if(!c)continue;
     const f=colorForPrice(w.preis,w.keinPreis);
-    const t=w.keinPreis?`${w.preis.toFixed(2)} € (Durchschnitt)`:`${w.preis.toFixed(2)} €`;
     const zertText=w.zert?`<br><b>Zertifikate:</b> ${w.zert}`:"";
     const m=L.circleMarker([c.lat,c.lon],{radius:8,color:f,fillColor:f,fillOpacity:0.85})
-      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}${zertText}`,{sticky:true})
+      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${w.preis.toFixed(2)} €${zertText}`,{sticky:true})
       .on("click",()=>handleMarkerClick(w.firma,c));
-
-    // Farben
-    if(w.keinPreis)m.addTo(gruppeGrau);
-    else if(f==="green")m.addTo(gruppeGruen);
-    else if(f==="orange")m.addTo(gruppeOrange);
-    else if(f==="red")m.addTo(gruppeRot);
-
-    // Zertifikate
-    if(hatZertifikat(w.zert,"enplus"))m.addTo(certEnPlus);
-    if(hatZertifikat(w.zert,"dinplus"))m.addTo(certDINplus);
-    if(hatZertifikat(w.zert,"sure"))m.addTo(certSURE);
+    m.zertifikate = w.zert || "";
+    m.preisFarbe = f;
 
     alleMarker.push({type:"firma",name:w.firma,ort:w.ort,marker:m});
     bounds.extend([c.lat,c.lon]);
@@ -182,25 +169,56 @@ async function buildMap(){
     const m=L.marker([c.lat,c.lon],{icon:blauesDreieck})
       .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
       .on("click",()=>handleMarkerClick(k.name,c));
-    m.addTo(kundenGruppe);
+    m.zertifikate = "";
     alleMarker.push({type:"kunde",name:k.name,ort:k.ort,marker:m});
     bounds.extend([c.lat,c.lon]);
   }
+
   if(bounds.isValid())map.fitBounds(bounds.pad(0.15));
+  updateLayers();
 }
 
 function updateLayers(){
-  // Farben
-  if(chkGruen.checked)map.addLayer(gruppeGruen);else map.removeLayer(gruppeGruen);
-  if(chkOrange.checked)map.addLayer(gruppeOrange);else map.removeLayer(gruppeOrange);
-  if(chkRot.checked)map.addLayer(gruppeRot);else map.removeLayer(gruppeRot);
-  if(chkGrau.checked)map.addLayer(gruppeGrau);else map.removeLayer(gruppeGrau);
-  if(chkKunden.checked)map.addLayer(kundenGruppe);else map.removeLayer(kundenGruppe);
+  // alle Marker entfernen
+  alleMarker.forEach(m => map.removeLayer(m.marker));
 
-  // Zertifikate
-  if(chkEnPlus.checked)map.addLayer(certEnPlus);else map.removeLayer(certEnPlus);
-  if(chkDINplus.checked)map.addLayer(certDINplus);else map.removeLayer(certDINplus);
-  if(chkSURE.checked)map.addLayer(certSURE);else map.removeLayer(certSURE);
+  // aktive Checkboxen
+  const en = chkEnPlus.checked;
+  const din = chkDINplus.checked;
+  const sure = chkSURE.checked;
+
+  const gruen = chkGruen.checked;
+  const orange = chkOrange.checked;
+  const rot = chkRot.checked;
+  const grau = chkGrau.checked;
+  const kunden = chkKunden.checked;
+
+  for(const m of alleMarker){
+    const w = m.marker;
+    if(m.type === "kunde" && kunden){
+      map.addLayer(w);
+      continue;
+    }
+    if(m.type === "firma"){
+      // Preisfilter
+      if(
+        (w.preisFarbe==="green" && !gruen) ||
+        (w.preisFarbe==="orange" && !orange) ||
+        (w.preisFarbe==="red" && !rot) ||
+        (w.preisFarbe==="#9e9e9e" && !grau)
+      ) continue;
+
+      // Zertifikatsfilter
+      const z = w.zertifikate.toLowerCase();
+      if(
+        (!en && z.includes("enplus")) ||
+        (!din && z.includes("dinplus")) ||
+        (!sure && z.includes("sure"))
+      ) continue;
+
+      map.addLayer(w);
+    }
+  }
 }
 
 document.addEventListener("change",e=>{if(e.target.type==="checkbox")updateLayers();});
@@ -223,7 +241,6 @@ document.getElementById("searchInput").addEventListener("keydown",e=>{
 (async ()=>{
   await ladeDaten();
   await buildMap();
-  updateLayers();
 })();
 </script>
 </body>
