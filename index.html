@@ -150,6 +150,51 @@ async function ladeDaten() {
   kunden = kundenDaten;
 }
 
+async function showRoute(a,b){
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if(data.routes && data.routes.length){
+    const route = data.routes[0];
+    const dist = (route.distance/1000).toFixed(1);
+    const durationMin = route.duration/60;
+    const hours = Math.floor(durationMin/60);
+    const minutes = Math.round(durationMin%60);
+    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+    const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+
+    const preisProKm = dist < 250 ? 2.15 : 1.85;
+    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+    const firmenPreis = firmeneintrag ? firmeneintrag.preis : 0;
+    const teilstrecke = dist / 24;
+    const berechnung = teilstrecke * preisProKm;
+    const gesamt = ((berechnung + firmenPreis) * 1.05).toFixed(2);
+
+    if(routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
+    const mid = coords[Math.floor(coords.length/2)];
+    L.popup().setLatLng(mid).setContent(`
+      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+      <b>Entfernung:</b> ${dist} km<br>
+      <b>Dauer:</b> ${durationStr}<br>
+      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+      <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €<br>
+      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+    `).openOn(map);
+
+    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
+  } else alert("Keine Route gefunden!");
+}
+
+function handleMarkerClick(label,coord){
+  selectedPoints.push({label,coord});
+  if(selectedPoints.length===2){
+    const [a,b]=selectedPoints;
+    showRoute(a,b);
+    selectedPoints=[];
+  }
+}
+
 async function buildMap(){
   alleMarker = [];
   const bounds=L.latLngBounds();
@@ -163,7 +208,8 @@ async function buildMap(){
     const sackText=w.sack?`<br><b>Sackware:</b> ${w.sack}`:"<br><i>keine Sackware</i>";
     const m=L.circleMarker([c.lat,c.lon],{
       radius:8,color:f,fillColor:f,fillOpacity:0.85
-    }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${w.preis.toFixed(2)} €${zertText}${sackText}`,{sticky:true});
+    }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${w.preis.toFixed(2)} €${zertText}${sackText}`,{sticky:true})
+    .on("click",()=>handleMarkerClick(w.firma,c)); // 💥 Klick-Event wieder hinzugefügt
     
     alleMarker.push({type:"firma",zert:w.zert.toLowerCase(),sack:w.sack.toLowerCase(),farbe:f,marker:m});
     bounds.extend([c.lat,c.lon]);
@@ -173,7 +219,8 @@ async function buildMap(){
     const c=geoCache[k.ort]||await geocode(k.ort);
     if(!c)continue;
     const m=L.marker([c.lat,c.lon],{icon:blauesDreieck})
-      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true});
+      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
+      .on("click",()=>handleMarkerClick(k.name,c)); // 💥 Klick-Event wieder hinzugefügt
     alleMarker.push({type:"kunde",zert:"",sack:"",farbe:"",marker:m});
     bounds.extend([c.lat,c.lon]);
   }
