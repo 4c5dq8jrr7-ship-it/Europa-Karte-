@@ -9,13 +9,14 @@
   <style>
     html,body{height:100%;margin:0}
     #map{width:100%;height:100%}
-    .legend, .cert-box{
+    .legend, .cert-box, .sack-box{
       position:absolute;z-index:1000;background:#fff;padding:8px 10px;
       border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.12);
       font:14px/1.3 system-ui,Arial,sans-serif;
     }
     .legend{bottom:12px;right:12px}
-    .cert-box{bottom:12px;left:12px}
+    .cert-box{bottom:120px;left:12px}
+    .sack-box{bottom:12px;left:12px}
     .search-box{
       position:absolute;top:12px;right:12px;z-index:1000;
       background:#fff;padding:8px 10px;border-radius:6px;
@@ -45,13 +46,21 @@
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label>
 </div>
 
-<!-- Linke Box für Zertifikate -->
+<!-- Linke Box: Zertifikate -->
 <div class="cert-box">
   <b>Zertifikate</b><br>
   <label><input type="checkbox" id="chkEnPlus" checked> EnPlus</label><br>
   <label><input type="checkbox" id="chkDINplus" checked> DINplus</label><br>
   <label><input type="checkbox" id="chkSURE" checked> SURE</label><br>
-  <label><input type="checkbox" id="chkOhne" checked> Kein Zertifikat</label>
+  <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
+</div>
+
+<!-- Linke Box unten: Sackware -->
+<div class="sack-box">
+  <b>Sackware</b><br>
+  <label><input type="checkbox" id="chkFireFlies" checked> FireFlies</label><br>
+  <label><input type="checkbox" id="chk15kg" checked> 15 kg</label><br>
+  <label><input type="checkbox" id="chkOhneSack" checked> Keine Sackware</label>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -103,12 +112,14 @@ async function ladeDaten() {
       complete: (r) => {
         const headers = Object.keys(r.data[0] || {});
         const zertKey = headers.find(h => h.toLowerCase().includes("zert")) || "Zertifikate";
+        const sackKey = headers.find(h => h.toLowerCase().includes("sack")) || "Sackware";
 
         const daten = r.data.filter(x => x.firma && x.ort).map(x => ({
           firma: x.firma.trim(),
           ort: x.ort.trim(),
           preis: parseFloat((x.preis || "0").replace(",", ".")),
-          zert: (x[zertKey] || "").trim()
+          zert: (x[zertKey] || "").trim(),
+          sack: (x[sackKey] || "").trim()
         }));
 
         const gültige = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
@@ -139,51 +150,6 @@ async function ladeDaten() {
   kunden = kundenDaten;
 }
 
-async function showRoute(a,b){
-  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if(data.routes && data.routes.length){
-    const route = data.routes[0];
-    const dist = (route.distance/1000).toFixed(1);
-    const durationMin = route.duration/60;
-    const hours = Math.floor(durationMin/60);
-    const minutes = Math.round(durationMin%60);
-    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
-    const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
-
-    const preisProKm = dist < 250 ? 2.15 : 1.85;
-    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-    const firmenPreis = firmeneintrag ? firmeneintrag.preis : 0;
-    const teilstrecke = dist / 24;
-    const berechnung = teilstrecke * preisProKm;
-    const gesamt = ((berechnung + firmenPreis) * 1.05).toFixed(2);
-
-    if(routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
-    const mid = coords[Math.floor(coords.length/2)];
-    L.popup().setLatLng(mid).setContent(`
-      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Entfernung:</b> ${dist} km<br>
-      <b>Dauer:</b> ${durationStr}<br>
-      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-      <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €<br>
-      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
-    `).openOn(map);
-
-    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-  } else alert("Keine Route gefunden!");
-}
-
-function handleMarkerClick(label,coord){
-  selectedPoints.push({label,coord});
-  if(selectedPoints.length===2){
-    const [a,b]=selectedPoints;
-    showRoute(a,b);
-    selectedPoints=[];
-  }
-}
-
 async function buildMap(){
   alleMarker = [];
   const bounds=L.latLngBounds();
@@ -194,12 +160,12 @@ async function buildMap(){
 
     const f=colorForPrice(w.preis,w.keinPreis);
     const zertText=w.zert?`<br><b>Zertifikate:</b> ${w.zert}`:"<br><i>kein Zertifikat</i>";
+    const sackText=w.sack?`<br><b>Sackware:</b> ${w.sack}`:"<br><i>keine Sackware</i>";
     const m=L.circleMarker([c.lat,c.lon],{
       radius:8,color:f,fillColor:f,fillOpacity:0.85
-    }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${w.preis.toFixed(2)} €${zertText}`,{sticky:true})
-    .on("click",()=>handleMarkerClick(w.firma,c));
+    }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${w.preis.toFixed(2)} €${zertText}${sackText}`,{sticky:true});
     
-    alleMarker.push({type:"firma",zert:w.zert.toLowerCase(),farbe:f,marker:m});
+    alleMarker.push({type:"firma",zert:w.zert.toLowerCase(),sack:w.sack.toLowerCase(),farbe:f,marker:m});
     bounds.extend([c.lat,c.lon]);
   }
 
@@ -207,9 +173,8 @@ async function buildMap(){
     const c=geoCache[k.ort]||await geocode(k.ort);
     if(!c)continue;
     const m=L.marker([c.lat,c.lon],{icon:blauesDreieck})
-      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
-      .on("click",()=>handleMarkerClick(k.name,c));
-    alleMarker.push({type:"kunde",zert:"",farbe:"",marker:m});
+      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true});
+    alleMarker.push({type:"kunde",zert:"",sack:"",farbe:"",marker:m});
     bounds.extend([c.lat,c.lon]);
   }
 
@@ -223,7 +188,11 @@ function updateLayers(){
   const en = chkEnPlus.checked;
   const din = chkDINplus.checked;
   const sure = chkSURE.checked;
-  const ohne = chkOhne.checked;
+  const ohneZ = chkOhneZert.checked;
+
+  const fire = chkFireFlies.checked;
+  const sack15 = chk15kg.checked;
+  const ohneS = chkOhneSack.checked;
 
   const gruen = chkGruen.checked;
   const orange = chkOrange.checked;
@@ -243,19 +212,22 @@ function updateLayers(){
          (m.farbe==="red" && !rot) ||
          (m.farbe==="#9e9e9e" && !grau)) continue;
 
+      // Zertifikate-Filter
       const z = m.zert.toLowerCase();
       const hatKeinZert = z.trim() === "";
+      let zertOk = false;
+      if (hatKeinZert && ohneZ) zertOk = true;
+      if (!hatKeinZert && ((en && z.includes("enplus")) || (din && z.includes("dinplus")) || (sure && z.includes("sure")))) zertOk = true;
 
-      let sichtbar = false;
-      if (hatKeinZert && ohne) sichtbar = true;
-      if (!hatKeinZert) {
-        // Marker ist sichtbar, wenn mindestens eines der aktivierten Zertifikate vorkommt
-        if ((en && z.includes("enplus")) ||
-            (din && z.includes("dinplus")) ||
-            (sure && z.includes("sure"))) sichtbar = true;
-      }
+      // Sackware-Filter
+      const s = m.sack.toLowerCase();
+      const hatKeineSack = s.trim() === "";
+      let sackOk = false;
+      if (hatKeineSack && ohneS) sackOk = true;
+      if (!hatKeineSack && ((fire && s.includes("fireflies")) || (sack15 && s.includes("15")))) sackOk = true;
 
-      if (!sichtbar) continue;
+      if (!zertOk || !sackOk) continue;
+
       map.addLayer(m.marker);
     }
   }
