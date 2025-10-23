@@ -26,20 +26,10 @@
       width:220px;padding:6px 8px;border:1px solid #ccc;
       border-radius:4px;outline:none;
     }
-    .hint{
-      position:absolute;top:12px;left:12px;z-index:1000;
-      background:#fff;padding:8px 10px;border-radius:6px;
-      box-shadow:0 2px 8px rgba(0,0,0,.15);
-      font:14px system-ui,Arial,sans-serif;
-    }
   </style>
 </head>
 <body>
 <div id="map"></div>
-
-<div class="hint">
-  ℹ️ Wähle zwei Punkte auf der Karte, um Route & Preis zu berechnen
-</div>
 
 <div class="search-box">
   🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort suchen…" />
@@ -248,7 +238,6 @@ function updateLayers(){
     }
 
     if(m.type === "firma"){
-      // Preisfilter
       if((m.farbe==="green" && !gruen) ||
          (m.farbe==="orange" && !orange) ||
          (m.farbe==="red" && !rot) ||
@@ -260,9 +249,10 @@ function updateLayers(){
       let sichtbar = false;
       if (hatKeinZert && ohne) sichtbar = true;
       if (!hatKeinZert) {
-        if (en && z.includes("enplus")) sichtbar = true;
-        if (din && z.includes("dinplus")) sichtbar = true;
-        if (sure && z.includes("sure")) sichtbar = true;
+        // Marker ist sichtbar, wenn mindestens eines der aktivierten Zertifikate vorkommt
+        if ((en && z.includes("enplus")) ||
+            (din && z.includes("dinplus")) ||
+            (sure && z.includes("sure"))) sichtbar = true;
       }
 
       if (!sichtbar) continue;
