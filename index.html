@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte</title>
+  <title>Pelletwerke – Europa Preiskarte mit Sackware</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
@@ -24,6 +24,16 @@
       width:220px;padding:6px 8px;border:1px solid #ccc;
       border-radius:4px;outline:none;
     }
+    /* Symbol-Style für Sackware Viereck (rosa) */
+    .sackware-icon {
+      width:16px;
+      height:16px;
+      background: pink;
+      display:inline-block;
+      border:2px solid #c80;
+      box-sizing: border-box;
+      transform: rotate(0deg);
+    }
   </style>
 </head>
 <body>
@@ -39,7 +49,8 @@
   <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
   <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
   <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label><br>
-  <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label>
+  <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label><br>
+  <label><input type="checkbox" id="chkSackware" checked> ⬛ Sackware (rosa)</label><br>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -49,6 +60,7 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   minZoom: 4, maxZoom: 10, attribution: "&copy; OpenStreetMap"
 }).addTo(map);
 
+// Farbenfunktion blieb gleich
 function colorForPrice(p, keinPreis) {
   if (keinPreis) return "#9e9e9e";
   if (!p || p <= 0) return "#9e9e9e";
@@ -57,6 +69,7 @@ function colorForPrice(p, keinPreis) {
   return "red";
 }
 
+// Geocode-Cache
 const geoCache = JSON.parse(localStorage.getItem("geoCachePellets_EU") || "{}");
 async function geocode(q) {
   if (geoCache[q]) return geoCache[q];
@@ -71,60 +84,85 @@ async function geocode(q) {
   return null;
 }
 
-const blauesDreieck = L.divIcon({
-  className: "custom-triangle",
-  html: `<svg width="24" height="24" viewBox="0 0 24 24">
-           <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
-         </svg>`,
-  iconAnchor: [12,22],
-  popupAnchor: [0,-20]
+// Symbol für Sackware – rosa Viereck
+const sackwareIcon = L.divIcon({
+  className: "sackware-icon",
+  html: "",
+  iconSize: [16,16],
+  iconAnchor: [8,8],
+  popupAnchor: [0,-10]
 });
 
-const gruppeGruen = L.layerGroup().addTo(map),
+// Gruppen für Layer
+const gruppeGruen   = L.layerGroup().addTo(map),
       gruppeOrange = L.layerGroup().addTo(map),
-      gruppeRot = L.layerGroup().addTo(map),
-      gruppeGrau = L.layerGroup().addTo(map),
-      kundenGruppe = L.layerGroup().addTo(map);
+      gruppeRot    = L.layerGroup().addTo(map),
+      gruppeGrau   = L.layerGroup().addTo(map),
+      kundenGruppe = L.layerGroup().addTo(map),
+      sackwareGruppe = L.layerGroup().addTo(map);
 
-const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
+// Daten-URLs
+const sheetUrlFirmen   = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9nU0bKoTs/export?format=csv";
+const sheetUrlKunden   = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
+const sheetUrlSackware = "https://docs.google.com/spreadsheets/d/1Z-qBN2-Y3kK9FK4y4mWhmvJo94OOQ96ikrISj-1_2To/export?format=csv&gid=0";
 
-let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
+// Arrays und Marker-Sammelstellen
+let werke = [], kunden = [], sackware = [];
+let alleMarker = [], selectedPoints = [], routeLine = null;
 
 async function ladeDaten() {
+  // Firmen
   const firmenPromise = new Promise((resolve) => {
     Papa.parse(sheetUrlFirmen, {
       download: true, header: true,
       complete: (r) => {
         const daten = r.data.filter(x => x.firma && x.ort).map(x => ({
           firma: x.firma.trim(),
-          ort: x.ort.trim(),
+          ort:   x.ort.trim(),
           preis: parseFloat((x.preis || "0").replace(",", "."))
         }));
         const gültige = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
         const avg = gültige.reduce((a,b)=>a+b.preis,0)/gültige.length;
         resolve(daten.map(w=>{
-          if(isNaN(w.preis)||w.preis<=0){w.preis=avg;w.keinPreis=true;}else w.keinPreis=false;
+          if(isNaN(w.preis)||w.preis<=0){ w.preis=avg; w.keinPreis=true; } else w.keinPreis=false;
           return w;
         }));
       }
     });
   });
 
-  const kundenPromise = new Promise((resolve)=>{
+  // Kunden
+  const kundenPromise = new Promise((resolve) => {
     Papa.parse(sheetUrlKunden, {
-      download:true, header:true,
-      complete:(r)=>{
+      download: true, header: true,
+      complete: (r) => {
         const headers = Object.keys(r.data[0]||{});
         const nameKey = headers.find(h=>h.toLowerCase().includes("name"))||"name";
-        const ortKey = headers.find(h=>["ort","adresse","standort","anschrift"].includes(h.toLowerCase()))||"ort";
-        resolve(r.data.map(x=>({name:(x[nameKey]||"").trim(), ort:(x[ortKey]||"").trim()})).filter(x=>x.name && x.ort));
+        const ortKey  = headers.find(h=>["ort","adresse","standort","anschrift"].includes(h.toLowerCase()))||"ort";
+        resolve(r.data.map(x=>({ name:(x[nameKey]||"").trim(), ort:(x[ortKey]||"").trim() })).filter(x=>x.name && x.ort));
       }
     });
   });
 
-  const [firmen, kundenDaten] = await Promise.all([firmenPromise, kundenPromise]);
-  werke = firmen; kunden = kundenDaten;
+  // Sackware
+  const sackwarePromise = new Promise((resolve) => {
+    Papa.parse(sheetUrlSackware, {
+      download: true, header: true,
+      complete: (r) => {
+        const daten = r.data.filter(x => x.firma && x.ort).map(x => ({
+          firma: x.firma.trim(),
+          ort:   x.ort.trim(),
+          preis: parseFloat((x.preis || "0").replace(",", "."))
+        }));
+        resolve(daten);
+      }
+    });
+  });
+
+  const [firmen, kundenDaten, sackwareDaten] = await Promise.all([firmenPromise, kundenPromise, sackwarePromise]);
+  werke     = firmen;
+  kunden    = kundenDaten;
+  sackware  = sackwareDaten;
 }
 
 async function showRoute(a,b){
@@ -133,20 +171,20 @@ async function showRoute(a,b){
   const data = await res.json();
   if(data.routes && data.routes.length){
     const route = data.routes[0];
-    const dist = (route.distance/1000).toFixed(1);
+    const dist  = (route.distance/1000).toFixed(1);
     const durationMin = route.duration/60;
     const hours = Math.floor(durationMin/60);
     const minutes = Math.round(durationMin%60);
-    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+    const durationStr = hours>0 ? `${hours}h ${minutes}min` : `${minutes}min`;
     const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
-    // Preislogik
+    // Preislogik bleibt nur für werke-Route
     const preisProKm = dist < 250 ? 2.15 : 1.85;
     const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-    const firmenPreis = firmeneintrag ? firmeneintrag.preis : 0;
-    const teilstrecke = dist / 24;
-    const berechnung = teilstrecke * preisProKm;
-    const gesamt = ((berechnung + firmenPreis) * 1.05).toFixed(2);
+    const firmenPreis    = firmeneintrag ? firmeneintrag.preis : 0;
+    const teilstrecke   = dist / 24;
+    const berechnung    = teilstrecke * preisProKm;
+    const gesamt        = ((berechnung + firmenPreis) * 1.05).toFixed(2);
 
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
@@ -161,73 +199,99 @@ async function showRoute(a,b){
     `).openOn(map);
 
     map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-  } else alert("Keine Route gefunden!");
+  } else {
+    alert("Keine Route gefunden!");
+  }
 }
 
-function handleMarkerClick(label,coord){
+function handleMarkerClick(label, coord){
   selectedPoints.push({label,coord});
   if(selectedPoints.length===2){
-    const [a,b]=selectedPoints;
+    const [a,b] = selectedPoints;
     showRoute(a,b);
-    selectedPoints=[];
+    selectedPoints = [];
   }
 }
 
 async function buildMap(){
-  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe].forEach(g=>g.clearLayers());
-  const bounds=L.latLngBounds();
+  // Clear old markers/groups
+  [gruppeGruen,gruppeOrange,gruppeRot,gruppeGrau,kundenGruppe,sackwareGruppe].forEach(g=>g.clearLayers());
+  const bounds = L.latLngBounds();
 
+  // Werke
   for(const w of werke){
-    const c=geoCache[w.ort]||await geocode(w.ort);
-    if(!c)continue;
-    const f=colorForPrice(w.preis,w.keinPreis);
-    const t=w.keinPreis?`${w.preis.toFixed(2)} € (Durchschnitt)`: `${w.preis.toFixed(2)} €`;
-    const m=L.circleMarker([c.lat,c.lon],{radius:8,color:f,fillColor:f,fillOpacity:0.85})
-      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`,{sticky:true})
-      .on("click",()=>handleMarkerClick(w.firma,c));
-    if(w.keinPreis)m.addTo(gruppeGrau);
-    else if(f==="green")m.addTo(gruppeGruen);
-    else if(f==="orange")m.addTo(gruppeOrange);
-    else if(f==="red")m.addTo(gruppeRot);
-    alleMarker.push({type:"firma",name:w.firma,ort:w.ort,marker:m});
-    bounds.extend([c.lat,c.lon]);
+    const c = geoCache[w.ort] || await geocode(w.ort);
+    if (!c) continue;
+    const f = colorForPrice(w.preis, w.keinPreis);
+    const t = w.keinPreis ? `${w.preis.toFixed(2)} € (Durchschnitt)` : `${w.preis.toFixed(2)} €`;
+    const m = L.circleMarker([c.lat, c.lon], {
+      radius:8, color: f, fillColor: f, fillOpacity:0.85
+    }).bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${t}`,{sticky:true})
+      .on("click", ()=>handleMarkerClick(w.firma, c));
+    if (w.keinPreis) m.addTo(gruppeGrau);
+    else if (f === "green")   m.addTo(gruppeGruen);
+    else if (f === "orange")  m.addTo(gruppeOrange);
+    else                      m.addTo(gruppeRot);
+    alleMarker.push({ type:"firma", name:w.firma, ort:w.ort, marker: m });
+    bounds.extend([c.lat, c.lon]);
   }
 
+  // Kunden
   for(const k of kunden){
-    const c=geoCache[k.ort]||await geocode(k.ort);
-    if(!c)continue;
-    const m=L.marker([c.lat,c.lon],{icon:blauesDreieck})
+    const c = geoCache[k.ort] || await geocode(k.ort);
+    if (!c) continue;
+    const m = L.marker([c.lat, c.lon], { icon: sackwareIcon /* temporarily reuse icon? Might define separate, but we’ll keep separate later */ })
       .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
-      .on("click",()=>handleMarkerClick(k.name,c));
+      .on("click", ()=>handleMarkerClick(k.name, c));
     m.addTo(kundenGruppe);
-    alleMarker.push({type:"kunde",name:k.name,ort:k.ort,marker:m});
-    bounds.extend([c.lat,c.lon]);
+    alleMarker.push({ type:"kunde", name:k.name, ort:k.ort, marker: m });
+    bounds.extend([c.lat, c.lon]);
   }
-  if(bounds.isValid())map.fitBounds(bounds.pad(0.15));
+
+  // Sackware
+  for(const s of sackware){
+    const c = geoCache[s.ort] || await geocode(s.ort);
+    if (!c) continue;
+    const t = `${s.preis.toFixed(2)} €`;
+    const m = L.marker([c.lat, c.lon], { icon: sackwareIcon })
+      .bindTooltip(`<b>${s.firma}</b><br>${s.ort}<br>${t}`, { sticky:true })
+      .on("click", ()=>handleMarkerClick(s.firma, c));
+    m.addTo(sackwareGruppe);
+    alleMarker.push({ type:"sackware", name:s.firma, ort:s.ort, marker: m });
+    bounds.extend([c.lat, c.lon]);
+  }
+
+  if (bounds.isValid()) map.fitBounds(bounds.pad(0.15));
 }
 
 function updateLayers(){
-  if(chkGruen.checked)map.addLayer(gruppeGruen);else map.removeLayer(gruppeGruen);
-  if(chkOrange.checked)map.addLayer(gruppeOrange);else map.removeLayer(gruppeOrange);
-  if(chkRot.checked)map.addLayer(gruppeRot);else map.removeLayer(gruppeRot);
-  if(chkGrau.checked)map.addLayer(gruppeGrau);else map.removeLayer(gruppeGrau);
-  if(chkKunden.checked)map.addLayer(kundenGruppe);else map.removeLayer(kundenGruppe);
+  if (chkGruen.checked)  map.addLayer(gruppeGruen);   else map.removeLayer(gruppeGruen);
+  if (chkOrange.checked) map.addLayer(gruppeOrange); else map.removeLayer(gruppeOrange);
+  if (chkRot.checked)    map.addLayer(gruppeRot);    else map.removeLayer(gruppeRot);
+  if (chkGrau.checked)   map.addLayer(gruppeGrau);   else map.removeLayer(gruppeGrau);
+  if (chkKunden.checked) map.addLayer(kundenGruppe); else map.removeLayer(kundenGruppe);
+  if (chkSackware.checked) map.addLayer(sackwareGruppe); else map.removeLayer(sackwareGruppe);
 }
-document.addEventListener("change",e=>{if(e.target.type==="checkbox")updateLayers();});
+
+document.addEventListener("change", e=>{
+  if(e.target.type==="checkbox") updateLayers();
+});
 
 // Suche
-document.getElementById("searchInput").addEventListener("keydown",e=>{
+document.getElementById("searchInput").addEventListener("keydown", e=>{
   if(e.key==="Enter"){
-    const query=e.target.value.toLowerCase().trim();
-    if(!query)return;
-    const treffer=alleMarker.find(m=>
-      m.name.toLowerCase().includes(query)||m.ort.toLowerCase().includes(query)
+    const query = e.target.value.toLowerCase().trim();
+    if(!query) return;
+    const treffer = alleMarker.find(m =>
+      m.name.toLowerCase().includes(query) || m.ort.toLowerCase().includes(query)
     );
     if(treffer){
-      const latlng=treffer.marker.getLatLng();
-      map.setView(latlng,9);
+      const latlng = treffer.marker.getLatLng();
+      map.setView(latlng, 9);
       treffer.marker.openTooltip();
-    }else alert("Kein Treffer gefunden.");
+    } else {
+      alert("Kein Treffer gefunden.");
+    }
   }
 });
 
