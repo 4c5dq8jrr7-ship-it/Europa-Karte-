@@ -342,6 +342,19 @@ document.getElementById("searchInput").addEventListener("keydown",e=>{
   }
 });
 
+// 💡 Strg + A = Filterboxen ein/ausblenden
+let filterVisible = true;
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.key.toLowerCase() === "a") {
+    e.preventDefault();
+    filterVisible = !filterVisible;
+    const elements = document.querySelectorAll(".legend, .cert-box, .sack-box, .ind-box, .search-box");
+    elements.forEach(el => {
+      el.style.display = filterVisible ? "block" : "none";
+    });
+  }
+});
+
 (async ()=>{
   await ladeDaten();
   await buildMap();
