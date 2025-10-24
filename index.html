@@ -276,9 +276,10 @@ async function buildMap(){
   updateLayers();
 }
 
-function updateLayers(){
-  alleMarker.forEach(m=>map.removeLayer(m.marker));
+function updateLayers() {
+  alleMarker.forEach(m => map.removeLayer(m.marker));
 
+  // Filterzustände auslesen
   const en = chkEnPlus.checked;
   const din = chkDINplus.checked;
   const sure = chkSURE.checked;
@@ -297,38 +298,42 @@ function updateLayers(){
   const grau = chkGrau.checked;
   const kundenAn = chkKunden.checked;
 
-  for(const m of alleMarker){
-    if(m.type === "kunde" && kundenAn){
-      map.addLayer(m.marker);
+  for (const m of alleMarker) {
+    if (m.type === "kunde") {
+      if (kundenAn) map.addLayer(m.marker);
       continue;
     }
 
-    if(m.type === "firma"){
-      if((m.farbe==="green" && !gruen) ||
-         (m.farbe==="orange" && !orange) ||
-         (m.farbe==="red" && !rot) ||
-         (m.farbe==="#9e9e9e" && !grau)) continue;
+    if ((m.farbe==="green" && !gruen) ||
+        (m.farbe==="orange" && !orange) ||
+        (m.farbe==="red" && !rot) ||
+        (m.farbe==="#9e9e9e" && !grau)) continue;
 
-      const z = m.zert.toLowerCase();
-      const s = m.sack.toLowerCase();
-      const i = m.industrie.toLowerCase();
+    const z = (m.zert || "").toLowerCase();
+    const s = (m.sack || "").toLowerCase();
+    const i = (m.industrie || "").toLowerCase();
 
-      const hatKeinZert = z.trim() === "";
-      let zertOk = hatKeinZert ? ohneZ : ((en && z.includes("enplus")) || (din && z.includes("dinplus")) || (sure && z.includes("sure")));
+    const hatKeinZert = z.trim() === "";
+    const zertOk = hatKeinZert
+      ? ohneZ
+      : ((en && z.includes("enplus")) || (din && z.includes("dinplus")) || (sure && z.includes("sure")));
 
-      const hatKeineSack = s.trim() === "";
-      let sackOk = hatKeineSack ? ohneS : ((fire && s.includes("fireflies")) || (sack15 && s.includes("15")));
+    const hatKeineSack = s.trim() === "";
+    const sackOk = hatKeineSack
+      ? ohneS
+      : ((fire && s.includes("fireflies")) || (sack15 && (s.includes("15") || s.includes("15kg"))));
 
-      const hatKeineIndustrie = i.trim() === "";
-      let indOk = hatKeineIndustrie ? ohneI : ind;
+    const hatKeineIndustrie = i.trim() === "";
+    const indOk = hatKeineIndustrie
+      ? ohneI
+      : (ind && (i.includes("industrie") || i.includes("industrial")));
 
-      if (zertOk && sackOk && indOk) map.addLayer(m.marker);
-    }
+    if (zertOk && sackOk && indOk) map.addLayer(m.marker);
   }
 }
 
-document.addEventListener("change",e=>{
-  if(e.target.type==="checkbox") updateLayers();
+document.addEventListener("change", e => {
+  if (e.target.matches("input[type='checkbox']")) updateLayers();
 });
 
 document.getElementById("searchInput").addEventListener("keydown",e=>{
