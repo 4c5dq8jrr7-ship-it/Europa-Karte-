@@ -60,15 +60,13 @@
 <div class="sack-box">
   <b>Sackware</b><br>
   <label><input type="checkbox" id="chkFireFlies" checked> FireFlies</label><br>
-  <label><input type="checkbox" id="chk15kg" checked> 15 kg</label><br>
-  <label><input type="checkbox" id="chkOhneSack" checked> Keine Sackware</label>
+  <label><input type="checkbox" id="chk15kg" checked> 15 kg</label>
 </div>
 
 <!-- Linke Box: Industrieware -->
 <div class="ind-box">
   <b>Industrieware</b><br>
-  <label><input type="checkbox" id="chkIndustrie" checked> Industrieware</label><br>
-  <label><input type="checkbox" id="chkOhneIndustrie" checked> Keine Industrieware</label>
+  <label><input type="checkbox" id="chkIndustrie" checked> Industrieware</label>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -139,7 +137,7 @@ async function ladeDaten() {
           .map(x => ({
             firma: (x.firma || "").trim(),
             ort:   (x.ort   || "").trim(),
-            preis: parseFloat((x.preis || "0").replace(",", ".")),       // Industriepreis (Spalte F)
+            preis: parseFloat((x.preis || "0").replace(",", ".")),       // Industriepreis
             sackpreis: parseFloat((x.sackpreis || "0").replace(",", ".")), // Sackwarenpreis (Spalte E)
             zert:  (x[zertKey] || "").trim(),
             sack:  (x[sackKey] || "").trim(),
@@ -178,7 +176,7 @@ async function ladeDaten() {
   kunden = kundenDaten;
 }
 
-// 🟢 Routenberechnung
+// Routenberechnung
 async function showRoute(a,b){
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -192,14 +190,10 @@ async function showRoute(a,b){
     const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
     const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
-    // Preislogik
     const sackMode = chkFireFlies.checked || chk15kg.checked;
     const preisProKm = parseFloat(dist) < 250 ? 2.15 : 1.85;
 
-    const firmeneintrag = werke.find(w =>
-      w.firma === a.label || w.firma === b.label
-    );
-
+    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
     const firmenPreis = firmeneintrag
       ? (sackMode && !isNaN(firmeneintrag.sackpreis) && firmeneintrag.sackpreis > 0
           ? firmeneintrag.sackpreis
@@ -221,7 +215,7 @@ async function showRoute(a,b){
         <b>Entfernung:</b> ${dist} km<br>
         <b>Dauer:</b> ${durationStr}<br>
         <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-        <b>${sackMode ? "Sackwarenpreis" : "Firmenpreis"}:</b> ${firmenPreis.toFixed(2)} €<br>
+        <b>${sackMode ? "Sackwarenpreis" : "Industriepreis"}:</b> ${firmenPreis.toFixed(2)} €<br>
         <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
       `)
       .openOn(map);
@@ -243,6 +237,7 @@ async function buildMap(){
   alleMarker = [];
   const bounds=L.latLngBounds();
 
+  // Firmen
   for(const w of werke){
     const c=geoCache[w.ort]||await geocode(w.ort);
     if(!c) continue;
@@ -261,14 +256,13 @@ async function buildMap(){
     alleMarker.push({
       type:"firma",
       zert:(w.zert||"").toLowerCase(),
-      sack:(w.sack||"").toLowerCase(),
-      industrie:(w.industrie||"").toLowerCase(),
       farbe:f,
       marker:m
     });
     bounds.extend([c.lat,c.lon]);
   }
 
+  // Kunden
   for(const k of kunden){
     const c=geoCache[k.ort]||await geocode(k.ort);
     if(!c) continue;
@@ -280,6 +274,7 @@ async function buildMap(){
   }
 
   if(bounds.isValid()) map.fitBounds(bounds.pad(0.15));
+  alleMarker.forEach(m=>map.addLayer(m.marker));
 }
 
 (async ()=>{
