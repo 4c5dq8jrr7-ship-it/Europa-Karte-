@@ -9,15 +9,12 @@
   <style>
     html,body{height:100%;margin:0}
     #map{width:100%;height:100%}
-    .legend, .cert-box, .sack-box, .ind-box{
-      position:absolute;z-index:1000;background:#fff;padding:8px 10px;
-      border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.12);
+    .legend, .left-box{
+      position:absolute;z-index:1000;background:#fff;padding:10px 12px;
+      border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.12);
       font:14px/1.3 system-ui,Arial,sans-serif;
     }
     .legend{bottom:12px;right:12px}
-    .cert-box{bottom:250px;left:12px}
-    .sack-box{bottom:150px;left:12px}
-    .ind-box{bottom:50px;left:12px}
     .search-box{
       position:absolute;top:12px;right:12px;z-index:1000;
       background:#fff;padding:8px 10px;border-radius:6px;
@@ -27,6 +24,15 @@
     .search-box input{
       width:220px;padding:6px 8px;border:1px solid #ccc;
       border-radius:4px;outline:none;
+    }
+    .left-box{
+      bottom:50px;left:12px;max-width:220px;
+    }
+    .left-box .section{
+      margin-bottom:8px;
+    }
+    .left-box hr{
+      border:none;border-top:1px solid #ddd;margin:8px 0;
     }
   </style>
 </head>
@@ -47,28 +53,28 @@
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label>
 </div>
 
-<!-- Linke Box: Zertifikate -->
-<div class="cert-box">
-  <b>Zertifikate</b><br>
-  <label><input type="checkbox" id="chkEnPlus" checked> ENplus</label><br>
-  <label><input type="checkbox" id="chkDINplus" checked> DINplus</label><br>
-  <label><input type="checkbox" id="chkSURE" checked> SURE</label><br>
-  <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
-</div>
-
-<!-- Linke Box: Sackware -->
-<div class="sack-box">
-  <b>Sackware</b><br>
-  <label><input type="checkbox" id="chkFireFlies" checked> FireFlies</label><br>
-  <label><input type="checkbox" id="chk15kg" checked> 15 kg</label><br>
-  <label><input type="checkbox" id="chkOhneSack" checked> Keine Sackware</label>
-</div>
-
-<!-- Linke Box: Industrieware -->
-<div class="ind-box">
-  <b>Industrieware</b><br>
-  <label><input type="checkbox" id="chkIndustrie" checked> Industrieware</label><br>
-  <label><input type="checkbox" id="chkOhneIndustrie" checked> Keine Industrieware</label>
+<!-- Linke Sammel-Box -->
+<div class="left-box">
+  <div class="section">
+    <b>Zertifikate</b><br>
+    <label><input type="checkbox" id="chkEnPlus" checked> ENplus</label><br>
+    <label><input type="checkbox" id="chkDINplus" checked> DINplus</label><br>
+    <label><input type="checkbox" id="chkSURE" checked> SURE</label><br>
+    <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
+  </div>
+  <hr>
+  <div class="section">
+    <b>Sackware</b><br>
+    <label><input type="checkbox" id="chkFireFlies" checked> FireFlies</label><br>
+    <label><input type="checkbox" id="chk15kg" checked> 15 kg</label><br>
+    <label><input type="checkbox" id="chkOhneSack" checked> Keine Sackware</label>
+  </div>
+  <hr>
+  <div class="section">
+    <b>Industrieware</b><br>
+    <label><input type="checkbox" id="chkIndustrie" checked> Industrieware</label><br>
+    <label><input type="checkbox" id="chkOhneIndustrie" checked> Keine Industrieware</label>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -177,7 +183,7 @@ async function ladeDaten() {
   kunden = kundenDaten;
 }
 
-// 🔵 Route anzeigen (sichtbar & näher ran)
+// 🔵 Route anzeigen
 async function showRoute(a,b){
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -349,7 +355,7 @@ document.addEventListener("keydown", (e) => {
   if (e.ctrlKey && e.key.toLowerCase() === "a") {
     e.preventDefault();
     filterVisible = !filterVisible;
-    const elements = document.querySelectorAll(".legend, .cert-box, .sack-box, .ind-box, .search-box");
+    const elements = document.querySelectorAll(".legend, .left-box, .search-box");
     elements.forEach(el => el.style.display = filterVisible ? "block" : "none");
   }
 });
