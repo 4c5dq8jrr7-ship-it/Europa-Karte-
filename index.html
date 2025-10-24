@@ -81,7 +81,7 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 let selectedPoints = [];
 let routeLine = null;
 
-// 🟡 Klick auf Karte → Route & Popup löschen
+// Klick auf Karte → Route löschen
 map.on("click", () => {
   if(routeLine) map.removeLayer(routeLine);
   routeLine = null;
@@ -139,7 +139,8 @@ async function ladeDaten() {
           .map(x => ({
             firma: (x.firma || "").trim(),
             ort:   (x.ort   || "").trim(),
-            preis: parseFloat((x.preis || "0").replace(",", ".")),
+            preis: parseFloat((x.preis || "0").replace(",", ".")),       // Industriepreis (Spalte F)
+            sackpreis: parseFloat((x.sackpreis || "0").replace(",", ".")), // Sackwarenpreis (Spalte E)
             zert:  (x[zertKey] || "").trim(),
             sack:  (x[sackKey] || "").trim(),
             industrie: (x[indKey] || "").trim()
@@ -177,7 +178,7 @@ async function ladeDaten() {
   kunden = kundenDaten;
 }
 
-// 🔵 Route anzeigen (sichtbar & näher ran)
+// 🟢 Routenberechnung
 async function showRoute(a,b){
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -191,9 +192,20 @@ async function showRoute(a,b){
     const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
     const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
+    // Preislogik
+    const sackMode = chkFireFlies.checked || chk15kg.checked;
     const preisProKm = parseFloat(dist) < 250 ? 2.15 : 1.85;
-    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-    const firmenPreis = firmeneintrag ? firmeneintrag.preis : 0;
+
+    const firmeneintrag = werke.find(w =>
+      w.firma === a.label || w.firma === b.label
+    );
+
+    const firmenPreis = firmeneintrag
+      ? (sackMode && !isNaN(firmeneintrag.sackpreis) && firmeneintrag.sackpreis > 0
+          ? firmeneintrag.sackpreis
+          : firmeneintrag.preis)
+      : 0;
+
     const teilstrecke = parseFloat(dist) / 24;
     const berechnung = teilstrecke * preisProKm;
     const gesamt = ((berechnung + firmenPreis) * 1.05).toFixed(2);
@@ -201,6 +213,7 @@ async function showRoute(a,b){
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.9}).addTo(map);
     const mid = coords[Math.floor(coords.length/2)];
+
     L.popup({autoClose:false, closeOnClick:false})
       .setLatLng(mid)
       .setContent(`
@@ -208,7 +221,7 @@ async function showRoute(a,b){
         <b>Entfernung:</b> ${dist} km<br>
         <b>Dauer:</b> ${durationStr}<br>
         <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-        <b>Firmenpreis:</b> ${firmenPreis.toFixed(2)} €<br>
+        <b>${sackMode ? "Sackwarenpreis" : "Firmenpreis"}:</b> ${firmenPreis.toFixed(2)} €<br>
         <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
       `)
       .openOn(map);
@@ -267,92 +280,7 @@ async function buildMap(){
   }
 
   if(bounds.isValid()) map.fitBounds(bounds.pad(0.15));
-  updateLayers();
 }
-
-function updateLayers(){
-  alleMarker.forEach(m=>map.removeLayer(m.marker));
-
-  const en = chkEnPlus.checked;
-  const din = chkDINplus.checked;
-  const sure = chkSURE.checked;
-  const ohneZ = chkOhneZert.checked;
-
-  const fire = chkFireFlies.checked;
-  const sack15 = chk15kg.checked;
-  const ohneS = chkOhneSack.checked;
-
-  const ind = chkIndustrie.checked;
-  const ohneI = chkOhneIndustrie.checked;
-
-  const gruen = chkGruen.checked;
-  const orange = chkOrange.checked;
-  const rot = chkRot.checked;
-  const grau = chkGrau.checked;
-  const kundenAn = chkKunden.checked;
-
-  for(const m of alleMarker){
-    if(m.type === "kunde" && kundenAn){
-      map.addLayer(m.marker);
-      continue;
-    }
-
-    if(m.type === "firma"){
-      if((m.farbe==="green" && !gruen) ||
-         (m.farbe==="orange" && !orange) ||
-         (m.farbe==="red" && !rot) ||
-         (m.farbe==="#9e9e9e" && !grau)) continue;
-
-      const z = m.zert.toLowerCase();
-      const s = m.sack.toLowerCase();
-      const i = m.industrie.toLowerCase();
-
-      const hatKeinZert = z.trim() === "";
-      let zertOk = hatKeinZert ? ohneZ : ((en && z.includes("enplus")) || (din && z.includes("dinplus")) || (sure && z.includes("sure")));
-
-      const hatKeineSack = s.trim() === "";
-      let sackOk = hatKeineSack ? ohneS : ((fire && s.includes("fireflies")) || (sack15 && s.includes("15")));
-
-      const hatKeineIndustrie = i.trim() === "";
-      let indOk = hatKeineIndustrie ? ohneI : ind;
-
-      if (zertOk && sackOk && indOk) map.addLayer(m.marker);
-    }
-  }
-}
-
-document.addEventListener("change",e=>{
-  if(e.target.type==="checkbox") updateLayers();
-});
-
-document.getElementById("searchInput").addEventListener("keydown",e=>{
-  if(e.key==="Enter"){
-    const query=e.target.value.toLowerCase().trim();
-    if(!query) return;
-    const treffer=alleMarker.find(m=>{
-      const tt = m.marker.getTooltip && m.marker.getTooltip().getContent().toLowerCase();
-      return tt ? tt.includes(query) : false;
-    });
-    if(treffer){
-      const latlng=treffer.marker.getLatLng();
-      map.setView(latlng,9);
-      treffer.marker.openTooltip();
-    }else{
-      alert("Kein Treffer gefunden.");
-    }
-  }
-});
-
-// 💡 Strg + A = Filterboxen ein/ausblenden
-let filterVisible = true;
-document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey && e.key.toLowerCase() === "a") {
-    e.preventDefault();
-    filterVisible = !filterVisible;
-    const elements = document.querySelectorAll(".legend, .cert-box, .sack-box, .ind-box, .search-box");
-    elements.forEach(el => el.style.display = filterVisible ? "block" : "none");
-  }
-});
 
 (async ()=>{
   await ladeDaten();
