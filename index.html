@@ -92,7 +92,7 @@
   <label><input type="checkbox" id="chk15kg" checked> 15 kg</label>
 
   <h4>Industrieware</h4>
-  <label><input type="checkbox" id="chkIndustrie"> Industrieware</label>
+  <label><input type="checkbox" id="chkIndustrie" checked> Industrieware</label>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -156,7 +156,15 @@ async function ladeDaten() {
     const kundenData = await fetch(sheetUrlKunden).then(r => r.text());
 
     const parsedFirmen = Papa.parse(firmenData, { header: true }).data.filter(x => x.firma && x.ort);
-    const parsedKunden = Papa.parse(kundenData, { header: true }).data.filter(x => x.name && x.ort);
+    const parsedKundenRaw = Papa.parse(kundenData, { header: true }).data;
+    const kundenArr = [];
+
+    // 💡 Kunden automatisch erkennen (egal wie Spalten heißen)
+    for (const x of parsedKundenRaw) {
+      const name = x.name || x.firma || x.kunde || x.kundenname || x["Name"] || x["Firma"] || x["Kunde"] || "";
+      const ort = x.ort || x.adresse || x.standort || x.stadt || x["Ort"] || x["Adresse"] || x["Standort"] || "";
+      if (name && ort) kundenArr.push({ name: name.trim(), ort: ort.trim() });
+    }
 
     werke = parsedFirmen.map(x => ({
       firma: x.firma.trim(),
@@ -169,7 +177,8 @@ async function ladeDaten() {
       keinPreis: isNaN(parseFloat(x.preis))
     }));
 
-    kunden = parsedKunden.map(x => ({ name: x.name.trim(), ort: x.ort.trim() }));
+    kunden = kundenArr;
+    console.log(`✅ ${werke.length} Werke & ${kunden.length} Kunden geladen.`);
   } catch (err) {
     console.error("Fehler beim Laden der Daten:", err);
     alert("⚠️ Fehler beim Laden der Daten!");
