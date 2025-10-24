@@ -79,7 +79,6 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 let selectedPoints = [];
 let routeLine = null;
 
-// Klick auf Karte → Route löschen
 map.on("click", () => {
   if(routeLine) map.removeLayer(routeLine);
   routeLine = null;
@@ -128,17 +127,19 @@ async function ladeDaten() {
       download: true, header: true,
       complete: (r) => {
         const headers = Object.keys(r.data[0] || {});
-        const zertKey = headers.find(h => h.toLowerCase().includes("zert")) || "Zertifikate";
-        const sackKey = headers.find(h => h.toLowerCase().includes("sack")) || "Sackware";
-        const indKey  = headers.find(h => h.toLowerCase().includes("industrie")) || "Industrieware";
+        const zertKey  = headers.find(h => h.toLowerCase().includes("zert")) || "Zertifikate";
+        const sackKey  = headers.find(h => h.toLowerCase().includes("sack")) || "Sackware";
+        const indKey   = headers.find(h => h.toLowerCase().includes("industrie")) || "Industrieware";
+        // Spalte E (Sackwarenpreis) – versuche Header-Namen zu erkennen:
+        const sackPreisKey = headers.find(h => h.toLowerCase().includes("sack") && h.toLowerCase().includes("preis")) || "sackpreis";
 
         const daten = r.data
           .filter(x => x.firma && x.ort)
           .map(x => ({
             firma: (x.firma || "").trim(),
             ort:   (x.ort   || "").trim(),
-            preis: parseFloat((x.preis || "0").replace(",", ".")),       // Industriepreis
-            sackpreis: parseFloat((x.sackpreis || "0").replace(",", ".")), // Sackwarenpreis (Spalte E)
+            preis: parseFloat((x.preis || "0").replace(",", ".")),                 // Industriepreis
+            sackpreis: parseFloat((x[sackPreisKey] || "0").replace(",", ".")),    // Sackwarenpreis (Spalte E)
             zert:  (x[zertKey] || "").trim(),
             sack:  (x[sackKey] || "").trim(),
             industrie: (x[indKey] || "").trim()
@@ -176,7 +177,6 @@ async function ladeDaten() {
   kunden = kundenDaten;
 }
 
-// Routenberechnung
 async function showRoute(a,b){
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -190,11 +190,17 @@ async function showRoute(a,b){
     const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
     const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
-    const sackMode = chkFireFlies.checked || chk15kg.checked;
+    // Sackwarenmodus: wenn irgendeine Sackware-Checkbox aktiv ist
+    const sackMode = document.getElementById("chkFireFlies").checked || document.getElementById("chk15kg").checked;
     const preisProKm = parseFloat(dist) < 250 ? 2.15 : 1.85;
 
-    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-    const firmenPreis = firmeneintrag
+    // Preis an einem beteiligten Werk ablesen (wenn vorhanden)
+    // (Ist einer der Punkte eine Firma? Dann nimm dessen Preis.)
+    const firmeneintrag =
+      werke.find(w => w.firma === a.label) ||
+      werke.find(w => w.firma === b.label) || null;
+
+    const basisPreis = firmeneintrag
       ? (sackMode && !isNaN(firmeneintrag.sackpreis) && firmeneintrag.sackpreis > 0
           ? firmeneintrag.sackpreis
           : firmeneintrag.preis)
@@ -202,7 +208,7 @@ async function showRoute(a,b){
 
     const teilstrecke = parseFloat(dist) / 24;
     const berechnung = teilstrecke * preisProKm;
-    const gesamt = ((berechnung + firmenPreis) * 1.05).toFixed(2);
+    const gesamt = ((berechnung + basisPreis) * 1.05).toFixed(2);
 
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.9}).addTo(map);
@@ -215,13 +221,15 @@ async function showRoute(a,b){
         <b>Entfernung:</b> ${dist} km<br>
         <b>Dauer:</b> ${durationStr}<br>
         <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-        <b>${sackMode ? "Sackwarenpreis" : "Industriepreis"}:</b> ${firmenPreis.toFixed(2)} €<br>
+        <b>${sackMode ? "Sackwarenpreis" : "Industriepreis"}:</b> ${basisPreis.toFixed(2)} €<br>
         <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
       `)
       .openOn(map);
 
     map.fitBounds(routeLine.getBounds(), {padding:[20,20]});
-  } else alert("Keine Route gefunden!");
+  } else {
+    alert("Keine Route gefunden!");
+  }
 }
 
 function handleMarkerClick(label,coord){
@@ -255,7 +263,11 @@ async function buildMap(){
 
     alleMarker.push({
       type:"firma",
+      name:w.firma,
+      ort:w.ort,
       zert:(w.zert||"").toLowerCase(),
+      sack:(w.sack||"").toLowerCase(),
+      industrie:(w.industrie||"").toLowerCase(),
       farbe:f,
       marker:m
     });
@@ -266,16 +278,124 @@ async function buildMap(){
   for(const k of kunden){
     const c=geoCache[k.ort]||await geocode(k.ort);
     if(!c) continue;
-    const m=L.marker([c.lat,c.lon],{icon:blauesDreieck})
-      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
+
+    const m=L.marker([c.lat,c.lon],{
+      icon:L.divIcon({
+        className:"custom-triangle",
+        html:`<svg width="24" height="24" viewBox="0 0 24 24"><polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/></svg>`,
+        iconAnchor:[12,22], popupAnchor:[0,-20]
+      })
+    }).bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
       .on("click",()=>handleMarkerClick(k.name,c));
-    alleMarker.push({type:"kunde",marker:m});
+
+    alleMarker.push({
+      type:"kunde",
+      name:k.name,
+      ort:k.ort,
+      marker:m
+    });
     bounds.extend([c.lat,c.lon]);
   }
 
   if(bounds.isValid()) map.fitBounds(bounds.pad(0.15));
-  alleMarker.forEach(m=>map.addLayer(m.marker));
+  updateLayers(); // Filter initial anwenden
 }
+
+// ==== FILTER-LOGIK ====
+function updateLayers(){
+  // alles erstmal entfernen
+  alleMarker.forEach(m=>map.removeLayer(m.marker));
+
+  // Checkbox-Zustände
+  const gruen  = document.getElementById("chkGruen").checked;
+  const orange = document.getElementById("chkOrange").checked;
+  const rot    = document.getElementById("chkRot").checked;
+  const grau   = document.getElementById("chkGrau").checked;
+  const kundenAn = document.getElementById("chkKunden").checked;
+
+  const en   = document.getElementById("chkEnPlus").checked;
+  const din  = document.getElementById("chkDINplus").checked;
+  const sure = document.getElementById("chkSURE").checked;
+  const ohneZ = document.getElementById("chkOhneZert").checked;
+
+  const fire = document.getElementById("chkFireFlies").checked;
+  const sack15 = document.getElementById("chk15kg").checked;
+
+  const indOnly = document.getElementById("chkIndustrie").checked;
+
+  // Prüfer, ob in Gruppe überhaupt etwas aktiv ist
+  const zertGruppeAktiv = en || din || sure || ohneZ;           // wenn nichts an → kein Zertifikat-Filter
+  const sackGruppeAktiv = fire || sack15;                       // wenn nichts an → kein Sack-Filter
+  const indGruppeAktiv  = indOnly;                              // wenn aus → kein Industrie-Filter
+
+  for(const m of alleMarker){
+    if(m.type === "kunde"){
+      if(kundenAn) map.addLayer(m.marker);
+      continue;
+    }
+
+    // Preis-Farbfilter
+    if((m.farbe==="green" && !gruen) ||
+       (m.farbe==="orange" && !orange) ||
+       (m.farbe==="red" && !rot) ||
+       (m.farbe==="#9e9e9e" && !grau)) {
+      continue;
+    }
+
+    // Zertifikate
+    if (zertGruppeAktiv){
+      const z = (m.zert||"");
+      const hatKeinZert = z.trim() === "";
+      const zertOk = (hatKeinZert && ohneZ) ||
+                     (!hatKeinZert && (
+                        (en && z.includes("enplus")) ||
+                        (din && z.includes("dinplus")) ||
+                        (sure && z.includes("sure"))
+                      ));
+      if(!zertOk) continue;
+    }
+
+    // Sackware
+    if (sackGruppeAktiv){
+      const s = (m.sack||"");
+      const sackOk = (fire && s.includes("fireflies")) || (sack15 && s.includes("15"));
+      if(!sackOk) continue;
+    }
+
+    // Industrieware
+    if (indGruppeAktiv){
+      const i = (m.industrie||"").trim();
+      const indOk = i !== ""; // nur zeigen, wenn Industrieware vorhanden
+      if(!indOk) continue;
+    }
+
+    map.addLayer(m.marker);
+  }
+}
+
+// Events
+document.addEventListener("change", e => {
+  if(e.target.type === "checkbox") updateLayers();
+});
+
+// Suche (einfach in Tooltip-Text)
+document.getElementById("searchInput").addEventListener("keydown",e=>{
+  if(e.key==="Enter"){
+    const query = e.target.value.toLowerCase().trim();
+    if(!query) return;
+    const treffer = alleMarker.find(m=>{
+      const tt = m.marker.getTooltip && m.marker.getTooltip().getContent().toLowerCase();
+      return tt ? tt.includes(query) : false;
+    });
+    if(treffer){
+      const latlng=treffer.marker.getLatLng();
+      map.setView(latlng,9);
+      treffer.marker.openTooltip();
+    }else{
+      alert("Kein Treffer gefunden.");
+    }
+  }
+});
 
 (async ()=>{
   await ladeDaten();
