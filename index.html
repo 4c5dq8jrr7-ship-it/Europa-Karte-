@@ -10,20 +10,26 @@
     html,body{height:100%;margin:0}
     #map{width:100%;height:100%}
 
-    .legend, .cert-box {
+    .legend, .filter-box {
       position:absolute;z-index:1000;background:#fff;padding:8px 10px;
       border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.12);
       font:14px/1.3 system-ui,Arial,sans-serif;
     }
 
     .legend{bottom:12px;right:12px}
-    .cert-box{bottom:12px;left:12px;}
+    .filter-box{bottom:12px;left:12px;max-height:85vh;overflow-y:auto}
 
-    .cert-box input[type="checkbox"] {
+    .filter-box input[type="checkbox"] {
       width:14px;
       height:14px;
       margin-right:5px;
       vertical-align:middle;
+    }
+
+    .filter-box hr {
+      border:none;
+      border-top:1px solid #ddd;
+      margin:8px 0;
     }
 
     .search-box{
@@ -47,16 +53,21 @@
   🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort suchen…" />
 </div>
 
-<!-- Zertifikate-Filter (links unten) -->
-<div class="cert-box">
+<!-- Linke kombinierte Filterbox -->
+<div class="filter-box">
   <b>Zertifikate</b><br>
   <label><input type="checkbox" id="chkEnPlus" checked> EnPlus</label><br>
   <label><input type="checkbox" id="chkDINplus" checked> DINplus</label><br>
   <label><input type="checkbox" id="chkSURE" checked> SURE</label><br>
   <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
+  <hr>
+  <b>Sackware</b><br>
+  <label><input type="checkbox" id="chkFireFlies" checked> FireFlies</label><br>
+  <label><input type="checkbox" id="chk15kg" checked> 15 kg</label><br>
+  <label><input type="checkbox" id="chkOhneSack" checked> Keine Sackware</label>
 </div>
 
-<!-- Farb-Filter (rechts unten) -->
+<!-- Rechte Farb-Filter -->
 <div class="legend">
   <b>Filter Farben</b><br>
   <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
@@ -114,13 +125,14 @@ async function ladeDaten() {
     Papa.parse(sheetUrlFirmen, {
       download: true, header: false,
       complete: (r) => {
-        // A: Firma | B: Ort | C: Preis | ... | G: Zertifikate
+        // A: Firma | B: Ort | C: Preis | E: Sackware | G: Zertifikate
         const rows = r.data.filter(row => row.length >= 7 && row[0] && row[1]);
         const daten = rows.map(row => ({
           firma: row[0].trim(),
           ort: row[1].trim(),
           preis: parseFloat((row[2] || "0").replace(",", ".")),
-          zert: (row[6] || "").trim()
+          sack: (row[4] || "").trim(),  // 🔹 Spalte E
+          zert: (row[6] || "").trim()   // 🔹 Spalte G
         }));
         const gültige = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
         const avg = gültige.reduce((a,b)=>a+b.preis,0)/gültige.length;
@@ -156,11 +168,12 @@ async function buildMap(){
     const c=geoCache[w.ort]||await geocode(w.ort);
     if(!c)continue;
     const f=colorForPrice(w.preis,w.keinPreis);
-    const zertInfo = w.zert ? `<br><b>Zertifikat:</b> ${w.zert}` : "<br><i>Kein Zertifikat</i>";
+    const zertText=w.zert?`<br><b>Zertifikat:</b> ${w.zert}`:"<br><i>kein Zertifikat</i>";
+    const sackText=w.sack?`<br><b>Sackware:</b> ${w.sack}`:"<br><i>keine Sackware</i>";
     const m=L.circleMarker([c.lat,c.lon],{radius:8,color:f,fillColor:f,fillOpacity:0.85})
-      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${w.preis.toFixed(2)} €${zertInfo}`,{sticky:true})
+      .bindTooltip(`<b>${w.firma}</b><br>${w.ort}<br>${w.preis.toFixed(2)} €${zertText}${sackText}`,{sticky:true})
       .on("click",()=>handleMarkerClick(w.firma,c));
-    alleMarker.push({type:"firma",zert:w.zert.toLowerCase(),farbe:f,marker:m});
+    alleMarker.push({type:"firma",zert:w.zert.toLowerCase(),sack:w.sack.toLowerCase(),farbe:f,marker:m});
     bounds.extend([c.lat,c.lon]);
   }
 
@@ -184,7 +197,11 @@ function updateLayers(){
   const en = chkEnPlus.checked;
   const din = chkDINplus.checked;
   const sure = chkSURE.checked;
-  const ohne = chkOhneZert.checked;
+  const ohneZ = chkOhneZert.checked;
+
+  const fire = chkFireFlies.checked;
+  const sack15 = chk15kg.checked;
+  const ohneS = chkOhneSack.checked;
 
   const gruen = chkGruen.checked;
   const orange = chkOrange.checked;
@@ -198,16 +215,24 @@ function updateLayers(){
       continue;
     }
 
-    // Zertifikate filtern
+    // --- Zertifikate ---
     const z = m.zert || "";
     let zertOK = false;
     if(z.includes("enplus") && en) zertOK = true;
     if(z.includes("dinplus") && din) zertOK = true;
     if(z.includes("sure") && sure) zertOK = true;
-    if(!z && ohne) zertOK = true;
-    if(!zertOK) continue;
+    if(!z && ohneZ) zertOK = true;
 
-    // Preisfarben filtern
+    // --- Sackware ---
+    const s = m.sack || "";
+    let sackOK = false;
+    if(s.includes("fireflies") && fire) sackOK = true;
+    if(s.includes("15") && sack15) sackOK = true;
+    if(!s && ohneS) sackOK = true;
+
+    if(!zertOK || !sackOK) continue;
+
+    // --- Preisfarbe ---
     if(m.farbe === "green" && gruen) map.addLayer(m.marker);
     if(m.farbe === "orange" && orange) map.addLayer(m.marker);
     if(m.farbe === "red" && rot) map.addLayer(m.marker);
@@ -257,12 +282,10 @@ async function showRoute(a,b){
   } else alert("Keine Route gefunden!");
 }
 
-// Checkbox reagiert sofort
 document.addEventListener("change", e => {
   if(e.target.type === "checkbox") updateLayers();
 });
 
-// Suche
 document.getElementById("searchInput").addEventListener("keydown", e => {
   if(e.key === "Enter"){
     const query = e.target.value.toLowerCase().trim();
