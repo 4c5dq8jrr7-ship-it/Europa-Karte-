@@ -191,16 +191,12 @@ async function buildMap(){
     const m=L.circleMarker([c.lat,c.lon],{
       radius:8,color:f,weight:1.5,fillColor:f,fillOpacity:0.85
     }).bindTooltip(info,{sticky:true})
-      .on("click",()=>handleMarkerClick(w.firma,c));
+      .on("click",()=>handleMarkerClick({
+        type:"firma", label:w.firma, coord:c, werk:w
+      }));
 
-    alleMarker.push({
-      type:"firma",
-      zert:(w.zert||"").toLowerCase(),
-      sack:(w.sack||"").toLowerCase(),
-      industrie:(w.industrie||"").toLowerCase(),
-      farbe:f,
-      marker:m
-    });
+    alleMarker.push({type:"firma", marker:m, zert:(w.zert||"").toLowerCase(),
+      sack:(w.sack||"").toLowerCase(), industrie:(w.industrie||"").toLowerCase(), farbe:f});
     bounds.extend([c.lat,c.lon]);
   }
 
@@ -209,8 +205,10 @@ async function buildMap(){
     if(!c) continue;
     const m=L.marker([c.lat,c.lon],{icon:blauesDreieck})
       .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
-      .on("click",()=>handleMarkerClick(k.name,c));
-    alleMarker.push({type:"kunde",marker:m});
+      .on("click",()=>handleMarkerClick({
+        type:"kunde", label:k.name, coord:c, kunde:k
+      }));
+    alleMarker.push({type:"kunde", marker:m});
     bounds.extend([c.lat,c.lon]);
   }
 
@@ -218,8 +216,8 @@ async function buildMap(){
   updateLayers();
 }
 
-function handleMarkerClick(label,coord){
-  selectedPoints.push({label,coord});
+function handleMarkerClick(obj){
+  selectedPoints.push(obj);
   if(selectedPoints.length===2){
     const [a,b]=selectedPoints;
     showRoute(a,b);
@@ -239,12 +237,22 @@ async function showRoute(a,b){
   const preisProKm = dist < 250 ? 2.15 : 1.85;
   const mid = coords[Math.floor(coords.length/2)];
 
+  const werk = a.werk || b.werk || null;
+  const grundpreis = werk ? werk.preis : 0;
+  const gesamt = ((parseFloat(dist) * preisProKm) + grundpreis).toFixed(2);
+
   if(routeLine) map.removeLayer(routeLine);
   routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.9}).addTo(map);
 
   L.popup()
     .setLatLng(mid)
-    .setContent(`<b>Route:</b> ${a.label} ↔ ${b.label}<br><b>Entfernung:</b> ${dist} km<br><b>Preis pro km:</b> ${preisProKm.toFixed(2)} €`)
+    .setContent(`
+      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+      <b>Entfernung:</b> ${dist} km<br>
+      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+      <b>Grundpreis:</b> ${grundpreis.toFixed(2)} €<br>
+      <b>Gesamtkosten:</b> <span style="color:green;font-weight:600">${gesamt} €</span>
+    `)
     .openOn(map);
 
   map.fitBounds(routeLine.getBounds(),{padding:[20,20]});
