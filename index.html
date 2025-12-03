@@ -101,76 +101,10 @@
       margin:0;
       flex-shrink:0;
     }
-
-    /* TASCHENRECHNER GANZ OBEN LINKS */
-    .calculator {
-      position:absolute;
-      top:12px;
-      left:12px;
-      z-index:2500;
-      background:#fff;
-      border-radius:6px;
-      box-shadow:0 2px 8px rgba(0,0,0,.15);
-      padding:8px 10px;
-      font:14px system-ui,Arial,sans-serif;
-      width:230px;
-      display:none;
-    }
-    .calculator-header{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:4px;
-      font-weight:bold;
-    }
-    .calculator-close{
-      cursor:pointer;
-      font-weight:bold;
-      padding:0 4px;
-    }
-    .calculator input{
-      width:100%;
-      box-sizing:border-box;
-      padding:4px 6px;
-      margin-bottom:4px;
-      border:1px solid #ccc;
-      border-radius:4px;
-    }
-    .calculator button{
-      width:100%;
-      padding:4px 6px;
-      border:1px solid #0077cc;
-      border-radius:4px;
-      background:#0077cc;
-      color:#fff;
-      cursor:pointer;
-      font-weight:bold;
-    }
-    .calculator button:hover{
-      background:#005fa0;
-    }
-    .calculator-result{
-      margin-top:4px;
-      min-height:18px;
-      font-size:13px;
-      color:#333;
-      word-wrap:break-word;
-    }
   </style>
 </head>
 <body>
 <div id="map"></div>
-
-<!-- TASCHENRECHNER (Strg+X) -->
-<div class="calculator" id="calculator">
-  <div class="calculator-header">
-    <span>Rechner (Strg+X)</span>
-    <span class="calculator-close" id="calcCloseBtn">✕</span>
-  </div>
-  <input type="text" id="calcInput" placeholder="z.B. 20€/srm*85 + (2,5€/km*300)*5 %">
-  <button id="calcBtn">= Berechnen</button>
-  <div class="calculator-result" id="calcResult"></div>
-</div>
 
 <!-- Suche + Länderfilter -->
 <div class="search-box">
@@ -459,7 +393,7 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// Durchschnitt pro Land (Werkspreise, nur mit echten Preisen)
+// Durchschnitt pro Land (Werkspreise)
 function berechneDurchschnittProLand(){
   const sums = {};
   const counts = {};
@@ -467,10 +401,8 @@ function berechneDurchschnittProLand(){
     if (m.type !== "firma") return;
     const cc = m.country_code || "";
     if (!cc) return;
-
     const preis = m.preis;
-    if (!isFinite(preis) || preis <= 0 || m.keinPreisWerk) return;
-
+    if (!isFinite(preis) || preis <= 0) return;
     if (!sums[cc]) { sums[cc] = 0; counts[cc] = 0; }
     sums[cc] += preis;
     counts[cc] += 1;
@@ -631,8 +563,15 @@ async function ensureCountryGeoJsonLoaded() {
   }
 }
 
-// Style: hier nur für Länder mit gültigem Durchschnitt
 function getCountryStyleForAvg(avg){
+  if (!avg || !isFinite(avg)) {
+    return {
+      color: "#555",
+      weight: 1,
+      fillColor: "transparent",
+      fillOpacity: 0
+    };
+  }
   let fillColor, borderColor;
   if (avg <= 260) {
     fillColor = "green";
@@ -678,10 +617,6 @@ async function showCountryAveragePolygons(){
       const code = countryNameToCode[nameRaw];
       if (!code) return false;
       if (!relevant.includes(code)) return false;
-
-      const avg = avgPriceByCountry[code];
-      if (!avg || !isFinite(avg)) return false;
-
       if (noCountryFilter) return true;
       return selectedCountries.includes(code);
     },
@@ -840,7 +775,7 @@ function luftlinieKm(aCoord, bCoord){
 }
 
 async function showRoute(a,b){
-  const url = `https://router.project.osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   let routeGefunden = false;
 
   try {
@@ -976,7 +911,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Suche
+// Suche: Firmen/Kunden + Ort, inkl. blauer Suchpunkt als erster Routenpunkt
 document.getElementById("searchInput").addEventListener("keydown", async e => {
   if (e.key === "Enter") {
     const raw = e.target.value.trim();
@@ -1060,83 +995,6 @@ document.getElementById("searchInput").addEventListener("keydown", async e => {
     }
   }
 });
-
-/* ====== TASCHENRECHNER-LOGIK (Strg + X) ====== */
-function toggleCalculator(force){
-  const calc = document.getElementById("calculator");
-  if (!calc) return;
-  if (typeof force === "boolean") {
-    calc.style.display = force ? "block" : "none";
-  } else {
-    calc.style.display = (calc.style.display === "block") ? "none" : "block";
-  }
-}
-
-/**
- * Unterstützt auch solche Eingaben:
- * 20€/srm*85+ (2,5€/km * 300)* 5 % = € / srm /85
- * - Komma -> Punkt
- * - Alle Buchstaben & € werden entfernt (Einheiten ignoriert)
- * - "5 %" wird zu (5/100)
- */
-function calculateExpression(){
-  const input = document.getElementById("calcInput");
-  const resultDiv = document.getElementById("calcResult");
-  let expr = (input.value || "").trim();
-  if (!expr){
-    resultDiv.textContent = "";
-    return;
-  }
-
-  // Komma zu Punkt
-  expr = expr.replace(/,/g, ".");
-
-  // alles nach '=' ignorieren (z.B. "= €/srm/85")
-  const eqIndex = expr.indexOf("=");
-  if (eqIndex !== -1) {
-    expr = expr.substring(0, eqIndex);
-  }
-
-  // Prozente: "5 %" -> "(5/100)"
-  expr = expr.replace(/(\d+(?:\.\d+)?)\s*%/g, "($1/100)");
-
-  // Einheiten & Buchstaben (inkl. €) entfernen
-  expr = expr.replace(/[A-Za-z€]/g, "");
-
-  // doppelte Leerzeichen weg
-  expr = expr.replace(/\s+/g, "");
-
-  if (!expr){
-    resultDiv.textContent = "Keine gültigen Zahlen gefunden";
-    return;
-  }
-
-  try {
-    const fn = new Function('"use strict"; return (' + expr + ');');
-    const res = fn();
-    resultDiv.textContent = "= " + res;
-  } catch (err) {
-    resultDiv.textContent = "Fehler in der Eingabe";
-  }
-}
-
-document.getElementById("calcBtn").addEventListener("click", calculateExpression);
-document.getElementById("calcInput").addEventListener("keydown", e => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    calculateExpression();
-  }
-});
-document.getElementById("calcCloseBtn").addEventListener("click", () => toggleCalculator(false));
-
-// globales Keyboard-Shortcut: Strg + X
-document.addEventListener("keydown", e => {
-  if (e.ctrlKey && (e.key === "x" || e.key === "X")) {
-    e.preventDefault(); // Standard "Ausschneiden" verhindern
-    toggleCalculator();
-  }
-});
-/* ========================================= */
 
 (async ()=>{
   await ladeDaten();
