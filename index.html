@@ -102,10 +102,10 @@
       flex-shrink:0;
     }
 
-    /* KLEINER TASCHENRECHNER */
+    /* TASCHENRECHNER GANZ OBEN LINKS */
     .calculator {
       position:absolute;
-      top:70px;
+      top:12px;
       left:12px;
       z-index:2500;
       background:#fff;
@@ -113,7 +113,7 @@
       box-shadow:0 2px 8px rgba(0,0,0,.15);
       padding:8px 10px;
       font:14px system-ui,Arial,sans-serif;
-      width:200px;
+      width:230px;
       display:none;
     }
     .calculator-header{
@@ -160,6 +160,17 @@
 </head>
 <body>
 <div id="map"></div>
+
+<!-- TASCHENRECHNER (Strg+X) -->
+<div class="calculator" id="calculator">
+  <div class="calculator-header">
+    <span>Rechner (Strg+X)</span>
+    <span class="calculator-close" id="calcCloseBtn">✕</span>
+  </div>
+  <input type="text" id="calcInput" placeholder="z.B. 20€/srm*85 + (2,5€/km*300)*5 %">
+  <button id="calcBtn">= Berechnen</button>
+  <div class="calculator-result" id="calcResult"></div>
+</div>
 
 <!-- Suche + Länderfilter -->
 <div class="search-box">
@@ -215,17 +226,6 @@
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Pellethändler</label><br>
   <label><input type="checkbox" id="chkSackKunden" checked> 🟣 Sackwaren Händler</label><br>
   <label><input type="checkbox" id="chkSonstigeKunden" checked> 🔶 Sonstige Kunden</label>
-</div>
-
-<!-- KLEINER TASCHENRECHNER (Strg+X) -->
-<div class="calculator" id="calculator">
-  <div class="calculator-header">
-    <span>Rechner (Strg+X)</span>
-    <span class="calculator-close" id="calcCloseBtn">✕</span>
-  </div>
-  <input type="text" id="calcInput" placeholder="z.B. 12*3.5+100/4">
-  <button id="calcBtn">= Berechnen</button>
-  <div class="calculator-result" id="calcResult"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1072,6 +1072,13 @@ function toggleCalculator(force){
   }
 }
 
+/**
+ * Unterstützt auch solche Eingaben:
+ * 20€/srm*85+ (2,5€/km * 300)* 5 % = € / srm /85
+ * - Komma -> Punkt
+ * - Alle Buchstaben & € werden entfernt (Einheiten ignoriert)
+ * - "5 %" wird zu (5/100)
+ */
 function calculateExpression(){
   const input = document.getElementById("calcInput");
   const resultDiv = document.getElementById("calcResult");
@@ -1080,8 +1087,31 @@ function calculateExpression(){
     resultDiv.textContent = "";
     return;
   }
+
+  // Komma zu Punkt
+  expr = expr.replace(/,/g, ".");
+
+  // alles nach '=' ignorieren (z.B. "= €/srm/85")
+  const eqIndex = expr.indexOf("=");
+  if (eqIndex !== -1) {
+    expr = expr.substring(0, eqIndex);
+  }
+
+  // Prozente: "5 %" -> "(5/100)"
+  expr = expr.replace(/(\d+(?:\.\d+)?)\s*%/g, "($1/100)");
+
+  // Einheiten & Buchstaben (inkl. €) entfernen
+  expr = expr.replace(/[A-Za-z€]/g, "");
+
+  // doppelte Leerzeichen weg
+  expr = expr.replace(/\s+/g, "");
+
+  if (!expr){
+    resultDiv.textContent = "Keine gültigen Zahlen gefunden";
+    return;
+  }
+
   try {
-    // einfacher, aber mächtiger Rechner: JS-Ausdruck bewerten
     const fn = new Function('"use strict"; return (' + expr + ');');
     const res = fn();
     resultDiv.textContent = "= " + res;
@@ -1102,12 +1132,10 @@ document.getElementById("calcCloseBtn").addEventListener("click", () => toggleCa
 // globales Keyboard-Shortcut: Strg + X
 document.addEventListener("keydown", e => {
   if (e.ctrlKey && (e.key === "x" || e.key === "X")) {
-    // Standard "Ausschneiden" im Browser unterdrücken
-    e.preventDefault();
+    e.preventDefault(); // Standard "Ausschneiden" verhindern
     toggleCalculator();
   }
 });
-
 /* ========================================= */
 
 (async ()=>{
