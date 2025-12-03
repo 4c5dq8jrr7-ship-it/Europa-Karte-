@@ -101,6 +101,61 @@
       margin:0;
       flex-shrink:0;
     }
+
+    /* KLEINER TASCHENRECHNER */
+    .calculator {
+      position:absolute;
+      top:70px;
+      left:12px;
+      z-index:2500;
+      background:#fff;
+      border-radius:6px;
+      box-shadow:0 2px 8px rgba(0,0,0,.15);
+      padding:8px 10px;
+      font:14px system-ui,Arial,sans-serif;
+      width:200px;
+      display:none;
+    }
+    .calculator-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:4px;
+      font-weight:bold;
+    }
+    .calculator-close{
+      cursor:pointer;
+      font-weight:bold;
+      padding:0 4px;
+    }
+    .calculator input{
+      width:100%;
+      box-sizing:border-box;
+      padding:4px 6px;
+      margin-bottom:4px;
+      border:1px solid #ccc;
+      border-radius:4px;
+    }
+    .calculator button{
+      width:100%;
+      padding:4px 6px;
+      border:1px solid #0077cc;
+      border-radius:4px;
+      background:#0077cc;
+      color:#fff;
+      cursor:pointer;
+      font-weight:bold;
+    }
+    .calculator button:hover{
+      background:#005fa0;
+    }
+    .calculator-result{
+      margin-top:4px;
+      min-height:18px;
+      font-size:13px;
+      color:#333;
+      word-wrap:break-word;
+    }
   </style>
 </head>
 <body>
@@ -160,6 +215,17 @@
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Pellethändler</label><br>
   <label><input type="checkbox" id="chkSackKunden" checked> 🟣 Sackwaren Händler</label><br>
   <label><input type="checkbox" id="chkSonstigeKunden" checked> 🔶 Sonstige Kunden</label>
+</div>
+
+<!-- KLEINER TASCHENRECHNER (Strg+X) -->
+<div class="calculator" id="calculator">
+  <div class="calculator-header">
+    <span>Rechner (Strg+X)</span>
+    <span class="calculator-close" id="calcCloseBtn">✕</span>
+  </div>
+  <input type="text" id="calcInput" placeholder="z.B. 12*3.5+100/4">
+  <button id="calcBtn">= Berechnen</button>
+  <div class="calculator-result" id="calcResult"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -402,7 +468,6 @@ function berechneDurchschnittProLand(){
     const cc = m.country_code || "";
     if (!cc) return;
 
-    // nur Werke mit echtem Preis (keinPreisWerk = false)
     const preis = m.preis;
     if (!isFinite(preis) || preis <= 0 || m.keinPreisWerk) return;
 
@@ -606,7 +671,6 @@ async function showCountryAveragePolygons(){
     "nl","lv","lt","ee","gb","be","sk","it"
   ];
 
-  // Nur Länder mit gültigem Durchschnitt anzeigen (also wirklich farbig)
   countryLayer = L.geoJSON(countryGeoJson, {
     filter: function(feature){
       const props = feature.properties || {};
@@ -616,7 +680,7 @@ async function showCountryAveragePolygons(){
       if (!relevant.includes(code)) return false;
 
       const avg = avgPriceByCountry[code];
-      if (!avg || !isFinite(avg)) return false; // kein Preis -> Land gar nicht anzeigen
+      if (!avg || !isFinite(avg)) return false;
 
       if (noCountryFilter) return true;
       return selectedCountries.includes(code);
@@ -677,7 +741,6 @@ async function updateLayers(){
     gruen || orange || rot || grau ||
     kundenFlag || sackKundenFlag || sonstigeFlag;
 
-  // Wenn keine Markerfarbe / Kunden ausgewählt -> Landesdurchschnitt anzeigen
   if (!anyMarkerCheckboxOn) {
     await showCountryAveragePolygons();
     return;
@@ -777,7 +840,7 @@ function luftlinieKm(aCoord, bCoord){
 }
 
 async function showRoute(a,b){
-  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+  const url = `https://router.project.osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   let routeGefunden = false;
 
   try {
@@ -913,7 +976,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Suche: Firmen/Kunden + Ort, inkl. blauer Suchpunkt als erster Routenpunkt
+// Suche
 document.getElementById("searchInput").addEventListener("keydown", async e => {
   if (e.key === "Enter") {
     const raw = e.target.value.trim();
@@ -997,6 +1060,55 @@ document.getElementById("searchInput").addEventListener("keydown", async e => {
     }
   }
 });
+
+/* ====== TASCHENRECHNER-LOGIK (Strg + X) ====== */
+function toggleCalculator(force){
+  const calc = document.getElementById("calculator");
+  if (!calc) return;
+  if (typeof force === "boolean") {
+    calc.style.display = force ? "block" : "none";
+  } else {
+    calc.style.display = (calc.style.display === "block") ? "none" : "block";
+  }
+}
+
+function calculateExpression(){
+  const input = document.getElementById("calcInput");
+  const resultDiv = document.getElementById("calcResult");
+  let expr = (input.value || "").trim();
+  if (!expr){
+    resultDiv.textContent = "";
+    return;
+  }
+  try {
+    // einfacher, aber mächtiger Rechner: JS-Ausdruck bewerten
+    const fn = new Function('"use strict"; return (' + expr + ');');
+    const res = fn();
+    resultDiv.textContent = "= " + res;
+  } catch (err) {
+    resultDiv.textContent = "Fehler in der Eingabe";
+  }
+}
+
+document.getElementById("calcBtn").addEventListener("click", calculateExpression);
+document.getElementById("calcInput").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    calculateExpression();
+  }
+});
+document.getElementById("calcCloseBtn").addEventListener("click", () => toggleCalculator(false));
+
+// globales Keyboard-Shortcut: Strg + X
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey && (e.key === "x" || e.key === "X")) {
+    // Standard "Ausschneiden" im Browser unterdrücken
+    e.preventDefault();
+    toggleCalculator();
+  }
+});
+
+/* ========================================= */
 
 (async ()=>{
   await ladeDaten();
