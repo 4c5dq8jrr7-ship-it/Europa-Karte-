@@ -38,7 +38,7 @@
       position:absolute;top:12px;right:12px;z-index:1500;
       background:#fff;padding:8px 10px;border-radius:6px;
       box-shadow:0 2px 8px rgba(0,0,0,.15);
-      font:14px/1.3 system-ui,Arial,sans-serif;
+      font:14px system-ui,Arial,sans-serif;
       width:260px;
     }
     .search-box input{
@@ -76,25 +76,24 @@
       background: #fff;
       border: 1px solid #ccc;
       border-radius: 4px;
-      box-shadow:0 2px 8px rgba(0,0,0,.12);
-      z-index:4000;
-      display:none;
-      min-width:160px;
-      max-height:260px;
-      overflow-y:auto;
-      padding:6px 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+      z-index: 4000;
+      display: none;
+      min-width: 160px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding: 6px 8px;
       box-sizing:border-box;
-      font:14px/1.3 system-ui,Arial,sans-serif;
     }
 
     .country-dropdown-menu label {
-      display:flex;
-      align-items:center;
-      gap:6px;
-      padding:2px 0;
-      cursor:pointer;
-      margin:0;
-      white-space:nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 0;
+      cursor: pointer;
+      margin: 0;
+      white-space: nowrap;
     }
     .country-dropdown-menu input[type="checkbox"] {
       width:14px;
@@ -162,21 +161,15 @@
 <body>
 <div id="map"></div>
 
-<!-- TASCHENRECHNER -->
+<!-- TASCHENRECHNER (Strg+X) -->
 <div class="calculator" id="calculator">
   <div class="calculator-header">
-    <span>Rechner</span>
+    <span>Rechner (Strg+X)</span>
     <span class="calculator-close" id="calcCloseBtn">✕</span>
   </div>
-  <input type="text" id="calcInput" placeholder="Berechnung eingeben">
+  <input type="text" id="calcInput" placeholder="z.B. 20€/srm*85 + (2,5€/km*300)*5 %">
   <button id="calcBtn">= Berechnen</button>
   <div class="calculator-result" id="calcResult"></div>
-  <div style="margin-top:4px;font-size:11px;color:#666;">
-    Einheiten (werden automatisch erkannt):<br>
-    srm = Schüttraummeter, rm/ster = Raummeter,<br>
-    atro = absolut trocken, t = Tonne,<br>
-    kg = Kilogramm, km = Kilometer.
-  </div>
 </div>
 
 <!-- Suche + Länderfilter -->
@@ -832,7 +825,6 @@ function handleMarkerClick(label,coord){
   }
 }
 
-// Haversine-Luftlinie (Fallback, z.B. über Wasser)
 function luftlinieKm(aCoord, bCoord){
   const R = 6371;
   const toRad = deg => deg * Math.PI / 180;
@@ -847,7 +839,6 @@ function luftlinieKm(aCoord, bCoord){
   return R * c;
 }
 
-// Straßenroute + Fallback Luftlinie
 async function showRoute(a,b){
   const url = `https://router.project.osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   let routeGefunden = false;
@@ -895,7 +886,6 @@ async function showRoute(a,b){
     console.warn("OSRM Fehler:", e);
   }
 
-  // Fallback: Luftlinie (z.B. über Meer / keine Straßenroute)
   if (!routeGefunden) {
     const distNum = luftlinieKm(a.coord, b.coord);
     const dist = distNum.toFixed(1);
@@ -1071,7 +1061,7 @@ document.getElementById("searchInput").addEventListener("keydown", async e => {
   }
 });
 
-/* ====== TASCHENRECHNER-LOGIK ====== */
+/* ====== TASCHENRECHNER-LOGIK (Strg + X) ====== */
 function toggleCalculator(force){
   const calc = document.getElementById("calculator");
   if (!calc) return;
@@ -1083,12 +1073,11 @@ function toggleCalculator(force){
 }
 
 /**
- * Unterstützt Eingaben mit Einheiten:
- * z.B. 20€/srm*85 + (2,5€/km * 55km)*5%
+ * Unterstützt auch solche Eingaben:
+ * 20€/srm*85+ (2,5€/km * 300)* 5 % = € / srm /85
  * - Komma -> Punkt
- * - Prozente werden zu (/100)
- * - Einheiten wie srm, rm, atro, km, kg, t werden erkannt
- *   und aus der Berechnung entfernt.
+ * - Alle Buchstaben & € werden entfernt (Einheiten ignoriert)
+ * - "5 %" wird zu (5/100)
  */
 function calculateExpression(){
   const input = document.getElementById("calcInput");
@@ -1102,30 +1091,19 @@ function calculateExpression(){
   // Komma zu Punkt
   expr = expr.replace(/,/g, ".");
 
-  // alles nach '=' ignorieren
+  // alles nach '=' ignorieren (z.B. "= €/srm/85")
   const eqIndex = expr.indexOf("=");
   if (eqIndex !== -1) {
     expr = expr.substring(0, eqIndex);
   }
 
-  // Prozente: "5 %" oder "5%" -> "(5/100)"
+  // Prozente: "5 %" -> "(5/100)"
   expr = expr.replace(/(\d+(?:\.\d+)?)\s*%/g, "($1/100)");
 
-  const unitGroup = "(atro|srm|rm|ster|t|kg|km|m|l)";
+  // Einheiten & Buchstaben (inkl. €) entfernen
+  expr = expr.replace(/[A-Za-z€]/g, "");
 
-  // "20€/srm" oder "20 € / srm" -> "20"
-  expr = expr.replace(new RegExp("(\\d+(?:\\.\\d+)?)\\s*€?\\s*\\/\\s*"+unitGroup, "gi"), "$1");
-
-  // "55km", "55 km", "55kg" usw. -> "55"
-  expr = expr.replace(new RegExp("(\\d+(?:\\.\\d+)?)\\s*"+unitGroup, "gi"), "$1");
-
-  // übrige Währungszeichen entfernen
-  expr = expr.replace(/€/g, "");
-
-  // übrige Buchstaben entfernen
-  expr = expr.replace(/[A-Za-z]/g, "");
-
-  // Leerzeichen entfernen
+  // doppelte Leerzeichen weg
   expr = expr.replace(/\s+/g, "");
 
   if (!expr){
@@ -1136,11 +1114,7 @@ function calculateExpression(){
   try {
     const fn = new Function('"use strict"; return (' + expr + ');');
     const res = fn();
-    if (typeof res === "number" && isFinite(res)) {
-      resultDiv.textContent = "= " + res;
-    } else {
-      resultDiv.textContent = "Fehler in der Eingabe";
-    }
+    resultDiv.textContent = "= " + res;
   } catch (err) {
     resultDiv.textContent = "Fehler in der Eingabe";
   }
@@ -1155,10 +1129,10 @@ document.getElementById("calcInput").addEventListener("keydown", e => {
 });
 document.getElementById("calcCloseBtn").addEventListener("click", () => toggleCalculator(false));
 
-// globales Keyboard-Shortcut: Strg + X (ohne Hinweis im UI)
+// globales Keyboard-Shortcut: Strg + X
 document.addEventListener("keydown", e => {
   if (e.ctrlKey && (e.key === "x" || e.key === "X")) {
-    e.preventDefault();
+    e.preventDefault(); // Standard "Ausschneiden" verhindern
     toggleCalculator();
   }
 });
