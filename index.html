@@ -393,23 +393,41 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// Durchschnitt pro Land (Werkspreise)
+/**
+ * Durchschnitt pro Land (Werkspreise):
+ * - Nur Werke mit echtem Preis (keinPreisWerk = false) fließen in den Durchschnitt ein.
+ * - Wenn in einem Land IRGENDEIN Werk keinen Preis hat (keinPreisWerk = true),
+ *   wird für dieses Land GAR KEIN Durchschnitt angezeigt.
+ */
 function berechneDurchschnittProLand(){
   const sums = {};
   const counts = {};
+  const hasMissing = {}; // Land hat mind. ein Werk ohne Preis
+
   alleMarker.forEach(m => {
     if (m.type !== "firma") return;
     const cc = m.country_code || "";
     if (!cc) return;
+
+    if (m.keinPreisWerk) {
+      hasMissing[cc] = true;
+      return;
+    }
+
     const preis = m.preis;
     if (!isFinite(preis) || preis <= 0) return;
+
     if (!sums[cc]) { sums[cc] = 0; counts[cc] = 0; }
     sums[cc] += preis;
     counts[cc] += 1;
   });
+
   avgPriceByCountry = {};
   Object.keys(sums).forEach(cc => {
-    avgPriceByCountry[cc] = sums[cc] / counts[cc];
+    // nur Länder ohne fehlende Preise bekommen einen Durchschnitt
+    if (!hasMissing[cc] && counts[cc] > 0) {
+      avgPriceByCountry[cc] = sums[cc] / counts[cc];
+    }
   });
 }
 
@@ -506,6 +524,7 @@ async function buildMap(){
     bounds.extend([c.lat,c.lon]);
   }
 
+  // Durchschnitt jetzt mit neuer Logik berechnen
   berechneDurchschnittProLand();
 
   if(bounds.isValid())map.fitBounds(bounds.pad(0.15));
@@ -563,15 +582,8 @@ async function ensureCountryGeoJsonLoaded() {
   }
 }
 
+// Style für Länder mit gültigem Durchschnitt
 function getCountryStyleForAvg(avg){
-  if (!avg || !isFinite(avg)) {
-    return {
-      color: "#555",
-      weight: 1,
-      fillColor: "transparent",
-      fillOpacity: 0
-    };
-  }
   let fillColor, borderColor;
   if (avg <= 260) {
     fillColor = "green";
@@ -610,6 +622,7 @@ async function showCountryAveragePolygons(){
     "nl","lv","lt","ee","gb","be","sk","it"
   ];
 
+  // Nur Länder mit gültigem Durchschnitt (avgPriceByCountry vorhanden)
   countryLayer = L.geoJSON(countryGeoJson, {
     filter: function(feature){
       const props = feature.properties || {};
@@ -617,6 +630,10 @@ async function showCountryAveragePolygons(){
       const code = countryNameToCode[nameRaw];
       if (!code) return false;
       if (!relevant.includes(code)) return false;
+
+      const avg = avgPriceByCountry[code];
+      if (!avg || !isFinite(avg)) return false; // Land ohne vollständige Preise -> gar nicht anzeigen
+
       if (noCountryFilter) return true;
       return selectedCountries.includes(code);
     },
@@ -676,6 +693,7 @@ async function updateLayers(){
     gruen || orange || rot || grau ||
     kundenFlag || sackKundenFlag || sonstigeFlag;
 
+  // Wenn keine Markerfarbe / Kunden ausgewählt -> Landesdurchschnitt anzeigen
   if (!anyMarkerCheckboxOn) {
     await showCountryAveragePolygons();
     return;
