@@ -393,7 +393,7 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// Durchschnitt pro Land (Werkspreise)
+// Durchschnitt pro Land (Werkspreise, nur mit echten Preisen)
 function berechneDurchschnittProLand(){
   const sums = {};
   const counts = {};
@@ -401,8 +401,11 @@ function berechneDurchschnittProLand(){
     if (m.type !== "firma") return;
     const cc = m.country_code || "";
     if (!cc) return;
+
+    // nur Werke mit echtem Preis (keinPreisWerk = false)
     const preis = m.preis;
-    if (!isFinite(preis) || preis <= 0) return;
+    if (!isFinite(preis) || preis <= 0 || m.keinPreisWerk) return;
+
     if (!sums[cc]) { sums[cc] = 0; counts[cc] = 0; }
     sums[cc] += preis;
     counts[cc] += 1;
@@ -563,15 +566,8 @@ async function ensureCountryGeoJsonLoaded() {
   }
 }
 
+// Style: hier nur für Länder mit gültigem Durchschnitt
 function getCountryStyleForAvg(avg){
-  if (!avg || !isFinite(avg)) {
-    return {
-      color: "#555",
-      weight: 1,
-      fillColor: "transparent",
-      fillOpacity: 0
-    };
-  }
   let fillColor, borderColor;
   if (avg <= 260) {
     fillColor = "green";
@@ -610,6 +606,7 @@ async function showCountryAveragePolygons(){
     "nl","lv","lt","ee","gb","be","sk","it"
   ];
 
+  // Nur Länder mit gültigem Durchschnitt anzeigen (also wirklich farbig)
   countryLayer = L.geoJSON(countryGeoJson, {
     filter: function(feature){
       const props = feature.properties || {};
@@ -617,6 +614,10 @@ async function showCountryAveragePolygons(){
       const code = countryNameToCode[nameRaw];
       if (!code) return false;
       if (!relevant.includes(code)) return false;
+
+      const avg = avgPriceByCountry[code];
+      if (!avg || !isFinite(avg)) return false; // kein Preis -> Land gar nicht anzeigen
+
       if (noCountryFilter) return true;
       return selectedCountries.includes(code);
     },
@@ -676,6 +677,7 @@ async function updateLayers(){
     gruen || orange || rot || grau ||
     kundenFlag || sackKundenFlag || sonstigeFlag;
 
+  // Wenn keine Markerfarbe / Kunden ausgewählt -> Landesdurchschnitt anzeigen
   if (!anyMarkerCheckboxOn) {
     await showCountryAveragePolygons();
     return;
