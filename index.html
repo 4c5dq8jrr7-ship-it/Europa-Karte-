@@ -393,25 +393,41 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// Durchschnitt pro Land (Werkspreise)
+// ⬇⬇⬇ HIER ist die geänderte Funktion ⬇⬇⬇
+// Durchschnitt pro Land (Werkspreise, nur Werke MIT echtem Preis)
 function berechneDurchschnittProLand(){
-  const sums = {};
+  const sums   = {};
   const counts = {};
+
   alleMarker.forEach(m => {
+    // nur Werke berücksichtigen
     if (m.type !== "firma") return;
+
     const cc = m.country_code || "";
     if (!cc) return;
+
+    // WICHTIG: Werke ohne echten Preis NICHT in den Durchschnitt einfließen lassen
+    if (m.keinPreisWerk) return;
+
     const preis = m.preis;
     if (!isFinite(preis) || preis <= 0) return;
-    if (!sums[cc]) { sums[cc] = 0; counts[cc] = 0; }
-    sums[cc] += preis;
+
+    if (!sums[cc]) {
+      sums[cc] = 0;
+      counts[cc] = 0;
+    }
+    sums[cc]   += preis;
     counts[cc] += 1;
   });
+
   avgPriceByCountry = {};
   Object.keys(sums).forEach(cc => {
-    avgPriceByCountry[cc] = sums[cc] / counts[cc];
+    if (counts[cc] > 0) {
+      avgPriceByCountry[cc] = sums[cc] / counts[cc];
+    }
   });
 }
+// ⬆⬆⬆ Ende Änderung ⬆⬆⬆
 
 function tooltipHtmlFromMarker(m){
   const useSack = sackFilterAktiv();
@@ -586,8 +602,8 @@ function getCountryStyleForAvg(avg){
   return {
     color: borderColor,
     weight: 2,
-    fillColor: fillColor,
-    fillOpacity: 0.3
+      fillColor: fillColor,
+      fillOpacity: 0.3
   };
 }
 
