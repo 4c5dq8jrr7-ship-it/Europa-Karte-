@@ -4,12 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pelletwerke – Europa Preiskarte</title>
-
-  <link rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-
   <style>
     html,body{height:100%;margin:0}
     #map{width:100%;height:100%}
@@ -50,7 +46,6 @@
       box-sizing:border-box;
       margin-left:4px;
     }
-
     .cert-box hr{border:none;height:1px;background:#eee;margin:6px 0}
 
     .country-dropdown {
@@ -81,24 +76,24 @@
       background: #fff;
       border: 1px solid #ccc;
       border-radius: 4px;
-      box-shadow:0 2px 8px rgba(0,0,0,.12);
-      z-index:4000;
-      display:none;
-      min-width:160px;
-      max-height:260px;
-      overflow-y:auto;
-      padding:6px 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+      z-index: 4000;
+      display: none;
+      min-width: 160px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding: 6px 8px;
       box-sizing:border-box;
     }
 
     .country-dropdown-menu label {
-      display:flex;
-      align-items:center;
-      gap:6px;
-      padding:2px 0;
-      cursor:pointer;
-      margin:0;
-      white-space:nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 0;
+      cursor: pointer;
+      margin: 0;
+      white-space: nowrap;
     }
     .country-dropdown-menu input[type="checkbox"] {
       width:14px;
@@ -108,20 +103,16 @@
     }
   </style>
 </head>
-
 <body>
-
 <div id="map"></div>
 
-<!-- ======= SUCHE + LÄNDERFILTER ======= -->
+<!-- Suche + Länderfilter -->
 <div class="search-box">
-  🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort suchen…">
+  🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort suchen…" />
 
   <b style="display:block;margin-top:6px;">Land / Länder filtern</b>
-
   <div class="country-dropdown" id="countryDropdown">
     <div class="country-dropdown-button" id="countryDropdownBtn">Alle Länder</div>
-
     <div class="country-dropdown-menu" id="countryDropdownMenu">
       <label><input type="checkbox" class="countryChk" value="all" checked> Alle</label>
       <label><input type="checkbox" class="countryChk" value="be"> Belgien</label>
@@ -145,7 +136,7 @@
   </div>
 </div>
 
-<!-- ======= ZERTIFIKATE + SACKWARE ======= -->
+<!-- Zertifikate + Sackware -->
 <div class="cert-box">
   <b>Zertifikate & Sackware</b><br>
   <label><input type="checkbox" id="chkEnPlus" checked> EnPlus</label><br>
@@ -153,15 +144,13 @@
   <label><input type="checkbox" id="chkSURE" checked> SURE</label><br>
   <label><input type="checkbox" id="chkCPP" checked> CPP</label><br>
   <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
-
   <hr>
-
   <b>Sackware</b><br>
   <label><input type="checkbox" id="chkSackFireflies"> FireFlies</label><br>
   <label><input type="checkbox" id="chkSack15kg"> 15 kg</label>
 </div>
 
-<!-- ======= LEGENDE RECHTS UNTEN ======= -->
+<!-- Legende unten rechts -->
 <div class="legend">
   <b>Filter Farben</b><br>
   <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
@@ -174,25 +163,13 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-/* =====================
-   GRUNDKARTE INITIALISIEREN
-===================== */
-
 const map = L.map("map").setView([51, 11], 5);
-
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   minZoom: 4,
   maxZoom: 18,
   attribution: "&copy; OpenStreetMap"
 }).addTo(map);
-
-
-
-/* =====================
-   HILFSFUNKTION: FARBE FÜR PREISE
-===================== */
 
 function colorForPrice(p, keinPreis) {
   if (keinPreis) return "#9e9e9e";
@@ -202,409 +179,431 @@ function colorForPrice(p, keinPreis) {
   return "red";
 }
 
-
-
-/* =====================
-   GEOCODE CACHE
-===================== */
-
 const geoCache = JSON.parse(localStorage.getItem("geoCachePellets_EU") || "{}");
-
 async function geocode(q) {
   if (geoCache[q] && geoCache[q].country_code) {
     return geoCache[q];
   }
-
   const r = await fetch(
     `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`
   );
   const d = await r.json();
-
   if (d.length) {
     const item = d[0];
     const obj = {
       lat: +item.lat,
       lon: +item.lon,
-      country: item.address?.country || "",
-      country_code: item.address?.country_code?.toLowerCase() || ""
+      country: item.address && item.address.country ? item.address.country : "",
+      country_code: item.address && item.address.country_code ? item.address.country_code.toLowerCase() : ""
     };
     geoCache[q] = obj;
     localStorage.setItem("geoCachePellets_EU", JSON.stringify(geoCache));
     return obj;
   }
-
   console.warn("Kein Geocode-Treffer:", q);
   return null;
 }
 
-
-
-/* =====================
-   KUNDEN-ICONS
-===================== */
-
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
-  html: `<svg width="24" height="24"><polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/></svg>`,
-  iconAnchor: [12,22]
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
 });
-
 const lilaDreieck = L.divIcon({
   className: "custom-triangle-purple",
-  html: `<svg width="24" height="24"><polygon points="12,2 22,22 2,22" fill="purple" stroke="black" stroke-width="1"/></svg>`,
-  iconAnchor: [12,22]
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="purple" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
 });
-
 const orangeDreieck = L.divIcon({
   className: "custom-triangle-orange",
-  html: `<svg width="24" height="24"><polygon points="12,2 22,22 2,22" fill="orange" stroke="black" stroke-width="1"/></svg>`,
-  iconAnchor: [12,22]
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="orange" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
 });
 
+const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
 
-
-/* =====================
-   GOOGLE SHEET DATEN
-===================== */
-
-const sheetUrlFirmen =
-  "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-
-const sheetUrlKunden =
-  "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
-
-let werke = [];
-let kunden = [];
-let alleMarker = [];
-let selectedPoints = [];
-let routeLine = null;
+let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
 let avgPriceByCountry = {};
 let searchResultMarker = null;
 
+// Länderflächen
+let countryGeoJson = null;
+let countryLayer = null;
 
+// Mapping von Ländernamen (GeoJSON) -> Ländercode
+const countryNameToCode = {
+  "germany": "de",
+  "bundesrepublik deutschland": "de",
+  "austria": "at",
+  "republic of austria": "at",
+  "poland": "pl",
+  "republic of poland": "pl",
+  "czech republic": "cz",
+  "czechia": "cz",
+  "france": "fr",
+  "french republic": "fr",
+  "switzerland": "ch",
+  "swiss confederation": "ch",
+  "sweden": "se",
+  "kingdom of sweden": "se",
+  "denmark": "dk",
+  "kingdom of denmark": "dk",
+  "finland": "fi",
+  "republic of finland": "fi",
+  "netherlands": "nl",
+  "kingdom of the netherlands": "nl",
+  "latvia": "lv",
+  "republic of latvia": "lv",
+  "lithuania": "lt",
+  "republic of lithuania": "lt",
+  "estonia": "ee",
+  "republic of estonia": "ee",
+  "united kingdom": "gb",
+  "united kingdom of great britain and northern ireland": "gb",
+  "great britain": "gb",
+  "belgium": "be",
+  "kingdom of belgium": "be",
+  "slovakia": "sk",
+  "slovak republic": "sk",
+  "italy": "it",
+  "italian republic": "it"
+};
 
-/* =====================
-   CSV → JSON (Firmen)
-===================== */
-
-function parseFirmenWithHeader(rows) {
-  const lc = (s) => String(s || "").toLowerCase();
-  const keys = Object.keys(rows[0] || {});
-
-  const findKey = (names) =>
-    keys.find((k) => names.includes(lc(k)));
+function parseFirmenWithHeader(rows){
+  const lc = (s)=>String(s||"").toLowerCase();
+  const keys = Object.keys(rows[0]||{});
+  const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
 
   const nameKey = findKey(["firma","name","werk"]) || keys[0];
   const ortKey  = findKey(["ort","stadt","location","standort","adresse"]) || keys[1];
 
   const preisKey = findKey(["preis","price","€/t","euro","euro_t","werkspreis"]);
-  const sackPreisKey = findKey(["preis_sack","preis sack","sackpreis","bag_price","sackwarepreis","sackware preis","preis_e"]);
+  const sackPreisKey = findKey(["preis_sack","preis sack","sackpreis","bag_price","sackwarepreis","sackware preis","sackwarenpreis","preis_e"]);
 
   const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
   const sackKey = findKey(["sackware","sack","bag","bagged"]);
 
   return rows
-    .filter(r => (r[nameKey] || "").trim() && (r[ortKey] || "").trim())
-    .map(r => ({
-      firma: r[nameKey].trim(),
-      ort: r[ortKey].trim(),
-      preis: parseFloat(String(r[preisKey] || "0").replace(",", ".")),
-      preisSack: parseFloat(String(r[sackPreisKey] || "0").replace(",", ".")),
-      zert: (r[zertKey] || "").trim(),
-      sack: (r[sackKey] || "").trim()
+    .filter(x => (x?.[nameKey]||"").toString().trim() && (x?.[ortKey]||"").toString().trim())
+    .map(x => ({
+      firma: (x[nameKey]||"").toString().trim(),
+      ort: (x[ortKey]||"").toString().trim(),
+      preis: parseFloat(String(x?.[preisKey] ?? "0").replace(",", ".")),
+      preisSack: parseFloat(String(x?.[sackPreisKey] ?? "0").replace(",", ".")),
+      zert: (x?.[zertKey]||"").toString().trim(),
+      sack: (x?.[sackKey]||"").toString().trim()
     }));
 }
 
-
-
-/* =====================
-   GOOGLE-TABELLEN LADEN
-===================== */
-
 async function ladeDaten() {
-
   const firmenPromise = new Promise((resolve) => {
     Papa.parse(sheetUrlFirmen, {
-      download: true,
-      header: true,
+      download: true, header: true,
       complete: (r) => {
-        let daten = [];
-
-        if (r.data && r.data.length && Object.keys(r.data[0]).length > 1) {
-          daten = parseFirmenWithHeader(r.data);
+        try{
+          let daten = [];
+          if (r.data && r.data.length && Object.keys(r.data[0]||{}).length > 1) {
+            daten = parseFirmenWithHeader(r.data);
+          }
+          if (!daten.length) {
+            Papa.parse(sheetUrlFirmen, {
+              download: true, header: false,
+              complete: (r2) => {
+                const rows = r2.data.filter(row => row.length >= 8 && row[0] && row[1]);
+                const daten2 = rows.map(row => ({
+                  firma: (row[0]||"").trim(),
+                  ort:   (row[1]||"").trim(),
+                  preis: parseFloat(String(row[2]||"0").replace(",", ".")),
+                  preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
+                  zert:  (row[6]||"").trim(),
+                  sack:  (row[7]||"").trim()
+                }));
+                resolve(normalizePreise(daten2));
+              }
+            });
+            return;
+          }
+          resolve(normalizePreise(daten));
+        }catch(e){
+          console.error("Header-Parsing Fehler:", e);
+          resolve([]);
         }
-
-        resolve(normalizePreise(daten));
       }
     });
   });
 
-  const kundenPromise = new Promise((resolve) => {
+  const kundenPromise = new Promise((resolve)=>{
     Papa.parse(sheetUrlKunden, {
-      download: true,
-      header: true,
-      complete: (r) => {
-        const h = Object.keys(r.data[0] || {});
-        const nameKey = h.find(x => x.toLowerCase().includes("name")) || "name";
-        const ortKey = h.find(x =>
-          ["ort","adresse","standort","stadt"].includes(x.toLowerCase())
-        ) || "ort";
+      download:true, header:true,
+      complete:(r)=>{
+        const headers = Object.keys(r.data[0]||{});
+        const nameKey = headers.find(h=>h.toLowerCase().includes("name"))||"name";
+        const ortKey = headers.find(h=>["ort","adresse","standort","anschrift","stadt","location"].includes(h.toLowerCase()))||"ort";
+        const loseKey = headers.find(h=>h.toLowerCase()==="lose") || "lose";
+        const sackKey = headers.find(h=>h.toLowerCase()==="sackware") || "sackware";
+        const sonstKey = headers.find(h=>h.toLowerCase().includes("sonstige")) || "sonstige";
 
         const kundenDaten = r.data
-          .map(x => ({
-            name: x[nameKey]?.trim() || "",
-            ort:  x[ortKey]?.trim() || "",
-            lose: (x["lose"] || "").trim().toLowerCase(),
-            sackware: (x["sackware"] || "").trim().toLowerCase(),
-            sonstige: (x["sonstige"] || "").trim().toLowerCase()
+          .map(x=>({
+            name:(x[nameKey]||"").trim(),
+            ort:(x[ortKey]||"").trim(),
+            lose:(x[loseKey]||"").trim().toLowerCase(),
+            sackware:(x[sackKey]||"").trim().toLowerCase(),
+            sonstige:(x[sonstKey]||"").trim().toLowerCase()
           }))
-          .filter(x => x.name && x.ort);
+          .filter(x=>x.name && x.ort);
 
         resolve(kundenDaten);
       }
     });
   });
 
-  [werke, kunden] = await Promise.all([firmenPromise, kundenPromise]);
+  const [firmen, kundenDaten] = await Promise.all([firmenPromise, kundenPromise]);
+  werke = firmen; kunden = kundenDaten;
 }
 
+function normalizePreise(daten){
+  const gültigeWerk = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
+  const gültigeSack = daten.filter(w => !isNaN(w.preisSack) && w.preisSack > 0);
+  const avgWerk = gültigeWerk.length ? (gültigeWerk.reduce((a,b)=>a+b.preis,0)/gültigeWerk.length) : 0;
+  const avgSack = gültigeSack.length ? (gültigeSack.reduce((a,b)=>a+b.preisSack,0)/gültigeSack.length) : 0;
 
-
-/* =====================
-   PREISE NORMALISIEREN
-===================== */
-
-function normalizePreise(list) {
-
-  const echteWerk = list.filter(w => w.preis > 0);
-  const echteSack = list.filter(w => w.preisSack > 0);
-
-  const avgWerk = echteWerk.length
-    ? echteWerk.reduce((a,b) => a + b.preis, 0) / echteWerk.length
-    : 0;
-
-  const avgSack = echteSack.length
-    ? echteSack.reduce((a,b) => a + b.preisSack, 0) / echteSack.length
-    : 0;
-
-  return list.map(w => {
-    w.keinPreisWerk = !(w.preis > 0);
-    w.keinPreisSack = !(w.preisSack > 0);
-
-    if (w.keinPreisWerk) w.preis = avgWerk;
-    if (w.keinPreisSack) w.preisSack = avgSack;
-
+  return daten.map(w=>{
+    if(isNaN(w.preis)||w.preis<=0){w.preis=avgWerk;w.keinPreisWerk=true;}else w.keinPreisWerk=false;
+    if(isNaN(w.preisSack)||w.preisSack<=0){w.preisSack=avgSack;w.keinPreisSack=true;}else w.keinPreisSack=false;
     w.farbeWerk = colorForPrice(w.preis, w.keinPreisWerk);
     w.farbeSack = colorForPrice(w.preisSack, w.keinPreisSack);
-
     return w;
   });
 }
 
+function sackFilterAktiv(){
+  const wantFireflies = document.getElementById("chkSackFireflies").checked;
+  const want15kg      = document.getElementById("chkSack15kg").checked;
+  return (wantFireflies || want15kg);
+}
 
-
-/* =====================
-   DURCHSCHNITT PRO LAND
-===================== */
-
+// Durchschnitt pro Land (Werkspreise)
 function berechneDurchschnittProLand(){
   const sums = {};
   const counts = {};
-
   alleMarker.forEach(m => {
     if (m.type !== "firma") return;
-
-    const cc = m.country_code;
+    const cc = m.country_code || "";
     if (!cc) return;
-
-    // WICHTIG:
-    // Firmen mit KEINEM echten Preis → nicht zählen
-    if (m.keinPreisWerk) return;
-
+    const preis = m.preis;
+    if (!isFinite(preis) || preis <= 0) return;
     if (!sums[cc]) { sums[cc] = 0; counts[cc] = 0; }
-    sums[cc] += m.preis;
+    sums[cc] += preis;
     counts[cc] += 1;
   });
-
   avgPriceByCountry = {};
-
   Object.keys(sums).forEach(cc => {
-    avgPriceByCountry[cc] =
-      counts[cc] > 0 ? (sums[cc] / counts[cc]) : null;
+    avgPriceByCountry[cc] = sums[cc] / counts[cc];
   });
 }
-
-
-
-/* =====================
-   TOOLTIP FUNKTION
-===================== */
 
 function tooltipHtmlFromMarker(m){
   const useSack = sackFilterAktiv();
-  const preisNow = useSack ? m.preisSack : m.preis;
+  const preisNow = useSack && isFinite(m.preisSack) && m.preisSack > 0 ? m.preisSack : m.preis;
+  const preisTxt = isFinite(preisNow) && preisNow > 0 ? `${preisNow.toFixed(2)} €` : "–";
+  const zertInfo = m.zert ? `<br><b>Zertifikat:</b> ${m.zert}` : "";
+  const sackInfo = m.sack ? `<br><b>Sackware:</b> ${m.sack}` : "";
 
+  let avgTxt = "";
   const avg = avgPriceByCountry[m.country_code];
+  if (avg && isFinite(avg)) {
+    avgTxt = `<br><b>Landesdurchschnitt:</b> ${avg.toFixed(2)} €`;
+  }
 
-  return `
-    <b>${m.firma}</b><br>
-    ${m.ort}<br>
-    <b>Preis:</b> ${preisNow?.toFixed(2)} €<br>
-    ${avg ? `<b>Landesdurchschnitt:</b> ${avg.toFixed(2)} €` : ""}
-  `;
+  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${avgTxt}`;
 }
-
-
-
-/* =====================
-   KARTE AUFBAUEN
-===================== */
 
 async function buildMap(){
   alleMarker = [];
-  const bounds = L.latLngBounds();
+  const bounds=L.latLngBounds();
 
-  /* ---- Werke ---- */
+  // Werke
   for(const w of werke){
-    const c = geoCache[w.ort] || await geocode(w.ort);
-    if(!c) continue;
+    const c=geoCache[w.ort] && geoCache[w.ort].country_code ? geoCache[w.ort] : await geocode(w.ort);
+    if(!c)continue;
 
-    const farbe = w.farbeWerk;
+    const farbeInit = sackFilterAktiv() ? w.farbeSack : w.farbeWerk;
 
-    const m = L.circleMarker([c.lat, c.lon], {
-      radius: 8,
-      color: farbe,
-      fillColor: farbe,
-      fillOpacity: 0.85
-    })
-    .bindTooltip("", {sticky:true})
-    .on("tooltipopen", () => {
-      m.getTooltip().setContent(
-        tooltipHtmlFromMarker({
-          firma: w.firma,
-          ort: w.ort,
-          preis: w.preis,
-          preisSack: w.preisSack,
-          country_code: c.country_code,
-          keinPreisWerk: w.keinPreisWerk
-        })
-      );
-    })
-    .on("click", () => handleMarkerClick(w.firma, c));
+    const m=L.circleMarker([c.lat,c.lon],{radius:8,color:farbeInit,fillColor:farbeInit,fillOpacity:0.85})
+      .bindTooltip("", {sticky:true})
+      .on("tooltipopen", () => {
+        m.getTooltip().setContent( tooltipHtmlFromMarker({
+          firma:w.firma, ort:w.ort,
+          preis:w.preis, preisSack:w.preisSack,
+          zert:(w.zert||""),
+          sack:(w.sack||""),
+          country_code: (c.country_code || "")
+        }));
+      })
+      .on("click",()=>handleMarkerClick(w.firma,c));
 
     alleMarker.push({
-      type: "firma",
-      marker: m,
-      firma: w.firma,
-      ort: w.ort,
-      preis: w.preis,
-      preisSack: w.preisSack,
-      keinPreisWerk: w.keinPreisWerk,
-      country_code: c.country_code,
-      sack: w.sack,
-      zert: w.zert.toLowerCase()
+      type:"firma",
+      marker:m,
+      firma:w.firma,
+      ort:w.ort,
+      preis:w.preis,
+      preisSack:w.preisSack,
+      keinPreisWerk:w.keinPreisWerk,
+      keinPreisSack:w.keinPreisSack,
+      farbeWerk:w.farbeWerk,
+      farbeSack:w.farbeSack,
+      zert:(w.zert||"").toLowerCase(),
+      sack:(w.sack||""),
+      country_code: (c.country_code || "")
     });
-
-    bounds.extend([c.lat, c.lon]);
+    bounds.extend([c.lat,c.lon]);
   }
 
-
-  /* ---- Kunden ---- */
+  // Kunden
   for(const k of kunden){
-    const c = geoCache[k.ort] || await geocode(k.ort);
-    if(!c) continue;
+    const c=geoCache[k.ort] && geoCache[k.ort].country_code ? geoCache[k.ort] : await geocode(k.ort);
+    if(!c)continue;
 
-    let icon = blauesDreieck;
+    const isSackOnly = (k.sackware === "ja") && (k.lose !== "ja");
+    const isSonstige = (k.sonstige === "ja");
+
     let type = "kunde";
+    let iconToUse = blauesDreieck;
 
-    if (k.sonstige === "ja") { icon = orangeDreieck; type = "sonstige"; }
-    else if (k.sackware === "ja" && k.lose !== "ja") { icon = lilaDreieck; type = "sackkunde"; }
+    if (isSonstige) {
+      type = "sonstige";
+      iconToUse = orangeDreieck;
+    } else if (isSackOnly) {
+      type = "sackkunde";
+      iconToUse = lilaDreieck;
+    }
 
-    const m = L.marker([c.lat, c.lon], {icon})
-      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`)
-      .on("click", () => handleMarkerClick(k.name, c));
+    const m=L.marker([c.lat,c.lon],{icon:iconToUse})
+      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
+      .on("click",()=>handleMarkerClick(k.name,c));
 
     alleMarker.push({
       type,
-      marker: m,
+      marker:m,
       name: k.name,
       ort: k.ort,
-      country_code: c.country_code
+      sonstige: k.sonstige,
+      country_code: (c.country_code || "")
     });
 
-    bounds.extend([c.lat, c.lon]);
+    bounds.extend([c.lat,c.lon]);
   }
 
   berechneDurchschnittProLand();
 
-  if(bounds.isValid()) map.fitBounds(bounds.pad(0.15));
-
+  if(bounds.isValid())map.fitBounds(bounds.pad(0.15));
   updateLayers();
 }
 
-
-
-
-/* =====================
-   LÄNDER-GEOJSON LADEN
-===================== */
-
-let countryGeoJson = null;
-let countryLayer = null;
-
-async function ensureCountryGeoJsonLoaded(){
-  if (countryGeoJson) return;
-  const r = await fetch("https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json");
-  countryGeoJson = await r.json();
+function getSelectedCountries() {
+  const chks = document.querySelectorAll(".countryChk");
+  const selected = [];
+  chks.forEach(ch => {
+    if (ch.checked) selected.push(ch.value);
+  });
+  if (selected.length === 0 || selected.includes("all")) return ["all"];
+  return selected;
 }
 
+function updateCountryButtonLabel() {
+  const selected = getSelectedCountries();
+  const btn = document.getElementById("countryDropdownBtn");
+  if (selected.length === 1 && selected[0] === "all") {
+    btn.textContent = "Alle Länder";
+  } else {
+    const names = {
+      be:"BE",
+      dk:"DK",
+      de:"DE",
+      ee:"EE",
+      fi:"FI",
+      fr:"FR",
+      it:"IT",
+      lv:"LV",
+      lt:"LT",
+      nl:"NL",
+      at:"AT",
+      pl:"PL",
+      se:"SE",
+      ch:"CH",
+      sk:"SK",
+      cz:"CZ",
+      gb:"UK"
+    };
+    btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
+  }
+}
 
+// GeoJSON für Länder laden
+async function ensureCountryGeoJsonLoaded() {
+  if (countryGeoJson) return;
+  try{
+    const resp = await fetch("https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json");
+    countryGeoJson = await resp.json();
+  }catch(e){
+    console.error("Konnte Länder-GeoJSON nicht laden:", e);
+    alert("Länderflächen konnten nicht geladen werden (GeoJSON-Download).");
+  }
+}
 
-/* =====================
-   FARBSTIL PRO LAND
-===================== */
-
-function getCountryStyle(avg){
+function getCountryStyleForAvg(avg){
   if (!avg || !isFinite(avg)) {
     return {
-      color: "#333",
+      color: "#555",
       weight: 1,
       fillColor: "transparent",
       fillOpacity: 0
     };
   }
-
-  if (avg <= 260)
-    return { color:"#004400", fillColor:"green", fillOpacity:0.3, weight:2 };
-
-  if (avg < 285)
-    return { color:"#aa5500", fillColor:"orange", fillOpacity:0.3, weight:2 };
-
-  return { color:"#880000", fillColor:"red", fillOpacity:0.3, weight:2 };
+  let fillColor, borderColor;
+  if (avg <= 260) {
+    fillColor = "green";
+    borderColor = "#004400";
+  } else if (avg < 285) {
+    fillColor = "orange";
+    borderColor = "#aa5500";
+  } else {
+    fillColor = "red";
+    borderColor = "#880000";
+  }
+  return {
+    color: borderColor,
+    weight: 2,
+    fillColor: fillColor,
+    fillOpacity: 0.3
+  };
 }
 
-
-
-/* =====================
-   LANDES-DURCHSCHNITTS-ANZEIGE
-===================== */
-
 async function showCountryAveragePolygons(){
-
-  // alle Marker ausblenden
-  alleMarker.forEach(m => {
-    if (map.hasLayer(m.marker)) map.removeLayer(m.marker);
-  });
+  alleMarker.forEach(m=>{ if(map.hasLayer(m.marker)) map.removeLayer(m.marker); });
 
   await ensureCountryGeoJsonLoaded();
+  if (!countryGeoJson) return;
 
   if (countryLayer) {
     map.removeLayer(countryLayer);
     countryLayer = null;
   }
 
-  const selected = getSelectedCountries();
-  const noFilter = selected.length === 1 && selected[0] === "all";
+  const selectedCountries = getSelectedCountries();
+  const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
 
   const relevant = [
     "de","at","pl","cz","fr","ch","se","dk","fi",
@@ -612,55 +611,32 @@ async function showCountryAveragePolygons(){
   ];
 
   countryLayer = L.geoJSON(countryGeoJson, {
-    filter: (f) => {
-      const name = (f.properties.name || "").toLowerCase();
-      const code = countryNameToCode[name];
-
+    filter: function(feature){
+      const props = feature.properties || {};
+      const nameRaw = (props.name || props.ADMIN || "").toLowerCase();
+      const code = countryNameToCode[nameRaw];
       if (!code) return false;
       if (!relevant.includes(code)) return false;
-      if (!noFilter && !selected.includes(code)) return false;
-
-      return true;
+      if (noCountryFilter) return true;
+      return selectedCountries.includes(code);
     },
-    style: (f) => {
-      const name = (f.properties.name || "").toLowerCase();
-      const code = countryNameToCode[name];
+    style: function(feature){
+      const props = feature.properties || {};
+      const nameRaw = (props.name || props.ADMIN || "").toLowerCase();
+      const code = countryNameToCode[nameRaw];
       const avg = avgPriceByCountry[code];
-      return getCountryStyle(avg);
+      return getCountryStyleForAvg(avg);
     },
-    onEachFeature: (f, layer) => {
-      const name = f.properties.name;
-      const code = countryNameToCode[name.toLowerCase()];
+    onEachFeature: function(feature, layer){
+      const props = feature.properties || {};
+      const nameRaw = (props.name || props.ADMIN || "").toLowerCase();
+      const code = countryNameToCode[nameRaw];
       const avg = avgPriceByCountry[code];
-
-      layer.bindTooltip(
-        `<b>${name}</b><br>Durchschnitt: ${avg ? avg.toFixed(2)+" €" : "keine Daten"}`
-      );
+      const name = props.name || props.ADMIN || (code ? code.toUpperCase() : "");
+      const avgTxt = avg && isFinite(avg) ? avg.toFixed(2) + " €" : "keine Daten";
+      layer.bindTooltip(`<b>${name}</b><br>Durchschnittspreis: ${avgTxt}`, {sticky:true});
     }
   }).addTo(map);
-}
-
-
-
-
-/* =====================
-   FILTER / MARKER ANZEIGEN
-===================== */
-
-function sackFilterAktiv(){
-  return (
-    document.getElementById("chkSackFireflies").checked ||
-    document.getElementById("chkSack15kg").checked
-  );
-}
-
-function getSelectedCountries(){
-  const sel = [];
-  document.querySelectorAll(".countryChk").forEach(ch => {
-    if (ch.checked) sel.push(ch.value);
-  });
-  if (sel.includes("all")) return ["all"];
-  return sel;
 }
 
 function hideCountryPolygons(){
@@ -670,285 +646,233 @@ function hideCountryPolygons(){
   }
 }
 
-
-
-/* ============================
-   *** UPDATE LAYERS (deine neue Version)
-============================ */
-
 async function updateLayers(){
-
   hideCountryPolygons();
 
-  // erst alle Marker ausblenden
-  alleMarker.forEach(m => {
-    if (map.hasLayer(m.marker)) map.removeLayer(m.marker);
-  });
+  alleMarker.forEach(m=>{ if(map.hasLayer(m.marker)) map.removeLayer(m.marker); });
 
   const selectedCountries = getSelectedCountries();
   const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
 
-  const gruen  = document.getElementById("chkGruen").checked;
-  const orange = document.getElementById("chkOrange").checked;
-  const rot    = document.getElementById("chkRot").checked;
-  const grau   = document.getElementById("chkGrau").checked;
+  const en         = document.getElementById("chkEnPlus").checked;
+  const din        = document.getElementById("chkDINplus").checked;
+  const sure       = document.getElementById("chkSURE").checked;
+  const cpp        = document.getElementById("chkCPP").checked;
+  const ohne       = document.getElementById("chkOhneZert").checked;
 
-  const kundenFlag      = document.getElementById("chkKunden").checked;
-  const sackKundenFlag  = document.getElementById("chkSackKunden").checked;
-  const sonstigeFlag    = document.getElementById("chkSonstigeKunden").checked;
+  const gruen      = document.getElementById("chkGruen").checked;
+  const orange     = document.getElementById("chkOrange").checked;
+  const rot        = document.getElementById("chkRot").checked;
+  const grau       = document.getElementById("chkGrau").checked;
+  const kundenFlag = document.getElementById("chkKunden").checked;
+  const sackKundenFlag = document.getElementById("chkSackKunden").checked;
+  const sonstigeFlag = document.getElementById("chkSonstigeKunden").checked;
 
-  const useSack =
-    document.getElementById("chkSackFireflies").checked ||
-    document.getElementById("chkSack15kg").checked;
+  const wantFireflies = document.getElementById("chkSackFireflies").checked;
+  const want15kg      = document.getElementById("chkSack15kg").checked;
+  const useSack       = (wantFireflies || want15kg);
 
-  // wenn ALLE Marker-Filter aus → Durchschnitt zeigen
-  const anyMarkerFilters =
+  const anyMarkerCheckboxOn =
     gruen || orange || rot || grau ||
     kundenFlag || sackKundenFlag || sonstigeFlag;
 
-  if (!anyMarkerFilters) {
+  if (!anyMarkerCheckboxOn) {
     await showCountryAveragePolygons();
     return;
   }
 
-  /* ========== Marker anzeigen ========== */
-
-  for (const m of alleMarker) {
-
-    // Kunden
-    if (m.type === "kunde" && kundenFlag) {
-      if (noCountryFilter || selectedCountries.includes(m.country_code)) {
-        map.addLayer(m.marker);
+  for(const m of alleMarker){
+    if(m.type === "kunde"){
+      if (kundenFlag) {
+        if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
+          map.addLayer(m.marker);
+        }
+      }
+      continue;
+    }
+    if(m.type === "sackkunde"){
+      if (sackKundenFlag) {
+        if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
+          map.addLayer(m.marker);
+        }
+      }
+      continue;
+    }
+    if(m.type === "sonstige"){
+      if (sonstigeFlag) {
+        if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
+          map.addLayer(m.marker);
+        }
       }
       continue;
     }
 
-    if (m.type === "sackkunde" && sackKundenFlag) {
-      if (noCountryFilter || selectedCountries.includes(m.country_code)) {
-        map.addLayer(m.marker);
-      }
-      continue;
+    if (useSack) {
+      const sNorm = (m.sack||"").toLowerCase().replace(/\s+/g,' ').trim();
+      const hasFireflies = sNorm.includes("fireflies");
+      const has15kg = sNorm.includes("15 kg") || sNorm.includes("15kg");
+      if (wantFireflies && !want15kg && !hasFireflies) continue;
+      if (want15kg && !wantFireflies && !has15kg) continue;
+      if (wantFireflies && want15kg && !(hasFireflies || has15kg)) continue;
     }
 
-    if (m.type === "sonstige" && sonstigeFlag) {
-      if (noCountryFilter || selectedCountries.includes(m.country_code)) {
-        map.addLayer(m.marker);
-      }
-      continue;
+    const z = m.zert || "";
+    let zertOK = false;
+    if(z.includes("enplus") && en) zertOK = true;
+    if(z.includes("dinplus") && din) zertOK = true;
+    if(z.includes("sure") && sure) zertOK = true;
+    if(z.includes("cpp") && cpp) zertOK = true;
+    if(!z && ohne) zertOK = true;
+    if(!zertOK) continue;
+
+    const aktiveFarbe = useSack ? m.farbeSack : m.farbeWerk;
+
+    const isGruen  = aktiveFarbe === "green";
+    const isOrange = aktiveFarbe === "orange";
+    const isRot    = aktiveFarbe === "red";
+    const isGrau   = aktiveFarbe === "#9e9e9e";
+
+    let sichtbar = false;
+    if(isGruen && gruen) sichtbar = true;
+    if(isOrange && orange) sichtbar = true;
+    if(isRot && rot) sichtbar = true;
+    if(isGrau && grau) sichtbar = true;
+    if(!sichtbar) continue;
+
+    if (!noCountryFilter) {
+      if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
     }
 
-    // Werke
-    if (m.type === "firma") {
-
-      // Sackware-Filter
-      if (useSack) {
-        const s = (m.sack || "").toLowerCase();
-        const hasFire = s.includes("fireflies");
-        const has15 = s.includes("15");
-        if (document.getElementById("chkSackFireflies").checked && !hasFire) continue;
-        if (document.getElementById("chkSack15kg").checked && !has15) continue;
-      }
-
-      // Zertifikate
-      const en   = document.getElementById("chkEnPlus").checked;
-      const din  = document.getElementById("chkDINplus").checked;
-      const sure = document.getElementById("chkSURE").checked;
-      const cpp  = document.getElementById("chkCPP").checked;
-      const ohne = document.getElementById("chkOhneZert").checked;
-      const z    = m.zert || "";
-
-      let zertOK = false;
-      if (z.includes("enplus") && en) zertOK = true;
-      if (z.includes("dinplus") && din) zertOK = true;
-      if (z.includes("sure")   && sure) zertOK = true;
-      if (z.includes("cpp")    && cpp) zertOK = true;
-      if (!z && ohne) zertOK = true;
-      if (!zertOK) continue;
-
-      const activeColor = useSack ? m.farbeSack : m.farbeWerk;
-
-      if (activeColor === "green"  && !gruen) continue;
-      if (activeColor === "orange" && !orange) continue;
-      if (activeColor === "red"    && !rot) continue;
-      if (activeColor === "#9e9e9e" && !grau) continue;
-
-      if (!noCountryFilter && !selectedCountries.includes(m.country_code)) continue;
-
-      m.marker.setStyle?.({ color: activeColor, fillColor: activeColor });
-      map.addLayer(m.marker);
+    m.marker.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
+    if (m.marker.getTooltip()) {
+      m.marker.getTooltip().setContent( tooltipHtmlFromMarker(m) );
     }
-  }
-}
-/* =====================
-   MARKER-KLICK → ROUTENPUNKTE
-===================== */
-
-function handleMarkerClick(label, coord) {
-  selectedPoints.push({ label, coord });
-
-  if (selectedPoints.length === 2) {
-    const [a, b] = selectedPoints;
-    showRoute(a, b);
-    selectedPoints = [];
+    map.addLayer(m.marker);
   }
 }
 
+function handleMarkerClick(label,coord){
+  selectedPoints.push({label,coord});
+  if(selectedPoints.length===2){
+    const [a,b]=selectedPoints;
+    showRoute(a,b);
+    selectedPoints=[];
+  }
+}
 
-
-/* =====================
-   LUFTLINIE (nur Fallback!)
-===================== */
-
-function luftlinieKm(a, b) {
+function luftlinieKm(aCoord, bCoord){
   const R = 6371;
-  const toRad = v => v * Math.PI / 180;
-
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lon - a.lon);
-
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
+  const toRad = deg => deg * Math.PI / 180;
+  const dLat = toRad(bCoord.lat - aCoord.lat);
+  const dLon = toRad(bCoord.lon - aCoord.lon);
+  const lat1 = toRad(aCoord.lat);
+  const lat2 = toRad(bCoord.lat);
 
   const h = Math.sin(dLat/2)**2 +
             Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
-
-  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  return R * c;
 }
 
-
-
-/* =====================
-   STRASSEN-ROUTING (OSRM)
-   — Keine Luftlinie außer wenn OSRM nichts findet!
-===================== */
-
-async function showRoute(a, b) {
-
-  // OSRM erwartet lat,lon — NICHT lon,lat!
-  const url = `https://router.project-osrm.org/route/v1/driving/` +
-              `${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}` +
-              `?overview=full&geometries=geojson`;
-
-  let found = false;
+async function showRoute(a,b){
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+  let routeGefunden = false;
 
   try {
-    const r = await fetch(url);
-    if (r.ok) {
-      const data = await r.json();
-      if (data.routes && data.routes.length) {
-
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if(data.routes && data.routes.length){
         const route = data.routes[0];
-        const dist = (route.distance / 1000).toFixed(1);
-
-        const mins = route.duration / 60;
-        const hours = Math.floor(mins / 60);
-        const minutes = Math.round(mins % 60);
-        const duration = hours > 0
-          ? `${hours}h ${minutes}min`
-          : `${minutes}min`;
-
-        const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+        const dist = (route.distance/1000).toFixed(1);
+        const durationMin = route.duration/60;
+        const hours = Math.floor(durationMin/60);
+        const minutes = Math.round(durationMin%60);
+        const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+        const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
         const useSack = sackFilterAktiv();
-        const f = werke.find(w => w.firma === a.label || w.firma === b.label);
-
-        const preis = f ? (useSack ? f.preisSack : f.preis) : 0;
+        const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+        const firmenPreis = firmeneintrag
+          ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
+          : 0;
 
         const preisProKm = parseFloat(dist) < 250 ? 2.15 : 1.85;
         const teilstrecke = parseFloat(dist) / 24;
         const berechnung = teilstrecke * preisProKm;
-        const gesamt = ((berechnung + preis) * 1.05).toFixed(2);
+        const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
-        if (routeLine) map.removeLayer(routeLine);
-
-        routeLine = L.polyline(coords, {
-          color: 'blue',
-          weight: 5,
-          opacity: 0.9
-        }).addTo(map);
-
-        const mid = coords[Math.floor(coords.length / 2)];
-
-        L.popup()
-          .setLatLng(mid)
-          .setContent(`
-            <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-            <b>Entfernung:</b> ${dist} km (Straße)<br>
-            <b>Dauer:</b> ${duration}<br>
-            <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-            <b>Werk-/Sackpreis:</b> ${preis.toFixed(2)} €<br>
-            <b>Gesamt:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
-          `)
-          .openOn(map);
-
-        map.fitBounds(routeLine.getBounds(), { padding: [40,40] });
-
-        found = true;
+        if(routeLine) map.removeLayer(routeLine);
+        routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
+        const mid = coords[Math.floor(coords.length/2)];
+        L.popup().setLatLng(mid).setContent(`
+          <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+          <b>Entfernung:</b> ${dist} km (Straße)<br>
+          <b>Dauer:</b> ${durationStr}<br>
+          <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+          <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+          <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+        `).openOn(map);
+        map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
+        routeGefunden = true;
       }
     }
   } catch (e) {
     console.warn("OSRM Fehler:", e);
   }
 
-  /* ====== Fallback: Luftlinie NUR wenn OSRM nichts liefert ====== */
-  if (!found) {
-    const km = luftlinieKm(a.coord, b.coord);
-    const dist = km.toFixed(1);
+  if (!routeGefunden) {
+    const distNum = luftlinieKm(a.coord, b.coord);
+    const dist = distNum.toFixed(1);
 
     const useSack = sackFilterAktiv();
-    const f = werke.find(w => w.firma === a.label || w.firma === b.label);
+    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+    const firmenPreis = firmeneintrag
+      ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
+      : 0;
 
-    const preis = f ? (useSack ? f.preisSack : f.preis) : 0;
-
-    const preisProKm = km < 250 ? 2.15 : 1.85;
-    const teilstrecke = km / 24;
-    const gesamt = ((teilstrecke * preisProKm) + preis) * 1.05;
+    const preisProKm = distNum < 250 ? 2.15 : 1.85;
+    const teilstrecke = distNum / 24;
+    const berechnung = teilstrecke * preisProKm;
+    const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
     const coords = [
       [a.coord.lat, a.coord.lon],
       [b.coord.lat, b.coord.lon]
     ];
 
-    if (routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords, {
+    if(routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(coords,{
       color:'blue',
       weight:4,
+      opacity:0.9,
       dashArray:'8 8'
     }).addTo(map);
 
-    const mid = [
-      (a.coord.lat + b.coord.lat) / 2,
-      (a.coord.lon + b.coord.lon) / 2
-    ];
+    const midLat = (a.coord.lat + b.coord.lat)/2;
+    const midLon = (a.coord.lon + b.coord.lon)/2;
 
-    L.popup()
-      .setLatLng(mid)
-      .setContent(`
-        <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-        <b>Entfernung:</b> ${dist} km (Luftlinie)<br>
-        <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-        <b>Werk-/Sackpreis:</b> ${preis.toFixed(2)} €<br>
-        <b>Gesamt (geschätzt):</b> ${gesamt.toFixed(2)} €
-        <br><small>OSRM fand keine Straßenroute.</small>
-      `)
-      .openOn(map);
+    L.popup().setLatLng([midLat, midLon]).setContent(`
+      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+      <b>Entfernung:</b> ${dist} km (Luftlinie / Wasserstrecke)<br>
+      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+      <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+      <b>Gesamtkosten (geschätzt):</b> <span style="color:green;font-size:1.1em">${gesamt} €</span><br>
+      <small>Keine Straßenroute verfügbar, daher Luftlinie (z.B. über Wasser) als gepunktete Strecke.</small>
+    `).openOn(map);
 
-    map.fitBounds(routeLine.getBounds(), { padding: [40,40] });
+    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
   }
 }
 
-
-
-/* =====================
-   KARTE-KLICK → ROUTE RESETTEN
-===================== */
-
-map.on("click", (e) => {
-  const t = e.originalEvent.target;
+map.on('click', (e) => {
+  const t = e.originalEvent && e.originalEvent.target;
   if (t && t.closest) {
     if (t.closest('.leaflet-marker-icon') ||
         t.closest('.leaflet-popup') ||
-        t.closest('.leaflet-interactive')) return;
+        t.closest('.leaflet-interactive')) {
+      return;
+    }
   }
   if (routeLine) {
     map.removeLayer(routeLine);
@@ -958,54 +882,27 @@ map.on("click", (e) => {
   map.closePopup();
 });
 
-
-
-/* =====================
-   LÄNDER-DROPDOWN
-===================== */
-
-document.addEventListener("change", (e) => {
-  if (e.target.matches(".countryChk")) {
-
-    if (e.target.value === "all" && e.target.checked) {
-      document.querySelectorAll(".countryChk").forEach(ch => {
-        if (ch.value !== "all") ch.checked = false;
-      });
-    } else if (e.target.value !== "all" && e.target.checked) {
-      document.querySelector('.countryChk[value="all"]').checked = false;
+document.addEventListener("change", e => {
+  if (e.target && e.target.matches('input[type="checkbox"]')) {
+    if (e.target.classList.contains("countryChk")) {
+      if (e.target.value === "all" && e.target.checked) {
+        document.querySelectorAll(".countryChk").forEach(ch => {
+          if (ch.value !== "all") ch.checked = false;
+        });
+      } else if (e.target.value !== "all" && e.target.checked) {
+        const allChk = document.querySelector('.countryChk[value="all"]');
+        allChk.checked = false;
+      }
+      updateCountryButtonLabel();
     }
-
-    updateCountryButtonLabel();
-  }
-
-  if (e.target.matches("input[type='checkbox']")) {
     updateLayers();
   }
 });
 
-function updateCountryButtonLabel() {
-  const sel = getSelectedCountries();
-  const btn = document.getElementById("countryDropdownBtn");
-
-  if (sel.length === 1 && sel[0] === "all") {
-    btn.textContent = "Alle Länder";
-    return;
-  }
-
-  btn.textContent = sel.map(s => s.toUpperCase()).join(", ");
-}
-
-
-
-/* =====================
-   DROPDOWN EIN / AUS
-===================== */
-
-document.getElementById("countryDropdownBtn")
-  .addEventListener("click", () => {
-    const menu = document.getElementById("countryDropdownMenu");
-    menu.style.display = menu.style.display === "block" ? "none" : "block";
-  });
+document.getElementById("countryDropdownBtn").addEventListener("click", () => {
+  const menu = document.getElementById("countryDropdownMenu");
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+});
 
 document.addEventListener("click", (e) => {
   const dd = document.getElementById("countryDropdown");
@@ -1014,85 +911,95 @@ document.addEventListener("click", (e) => {
   }
 });
 
+// Suche: Firmen/Kunden + Ort, inkl. blauer Suchpunkt als erster Routenpunkt
+document.getElementById("searchInput").addEventListener("keydown", async e => {
+  if (e.key === "Enter") {
+    const raw = e.target.value.trim();
+    const query = raw.toLowerCase();
+    if (!query) return;
 
+    if (routeLine) {
+      map.removeLayer(routeLine);
+      routeLine = null;
+    }
+    selectedPoints = [];
 
-/* =====================
-   SUCHE
-===================== */
+    if (searchResultMarker && map.hasLayer(searchResultMarker)) {
+      map.removeLayer(searchResultMarker);
+      searchResultMarker = null;
+    }
 
-document.getElementById("searchInput")
-.addEventListener("keydown", async (e) => {
+    const matches = alleMarker.filter(m => {
+      const tooltipContent = (m.marker.getTooltip && m.marker.getTooltip().getContent)
+        ? String(m.marker.getTooltip().getContent()).toLowerCase()
+        : "";
 
-  if (e.key !== "Enter") return;
+      const name = (m.firma || m.name || "").toLowerCase();
+      const ort  = (m.ort   || "").toLowerCase();
 
-  const raw = e.target.value.trim().toLowerCase();
-  if (!raw) return;
-
-  if (routeLine) {
-    map.removeLayer(routeLine);
-    routeLine = null;
-  }
-
-  selectedPoints = [];
-
-  if (searchResultMarker) {
-    map.removeLayer(searchResultMarker);
-    searchResultMarker = null;
-  }
-
-  const matches = alleMarker.filter(m => {
-    const content = m.marker.getTooltip()?.getContent?.()?.toLowerCase() || "";
-    const name = (m.firma || m.name || "").toLowerCase();
-    const ort = (m.ort || "").toLowerCase();
-    return content.includes(raw) || name.includes(raw) || ort.includes(raw);
-  });
-
-  const bounds = L.latLngBounds();
-
-  matches.forEach((m, idx) => {
-    const latlng = m.marker.getLatLng();
-    if (!map.hasLayer(m.marker)) map.addLayer(m.marker);
-    bounds.extend(latlng);
-    if (idx === 0) m.marker.openTooltip();
-  });
-
-  // zusätzlich geocoden
-  const geo = await geocode(raw);
-  if (geo) {
-    const latlng = [geo.lat, geo.lon];
-    searchResultMarker = L.circleMarker(latlng, {
-      radius: 8,
-      color: 'blue',
-      fillColor: 'blue',
-      fillOpacity: 0.5
-    }).addTo(map);
-
-    searchResultMarker
-      .bindPopup(`<b>${raw}</b><br>${geo.country || ""}`)
-      .openPopup();
-
-    bounds.extend(latlng);
-
-    selectedPoints.push({
-      label: raw,
-      coord: { lat: geo.lat, lon: geo.lon }
+      return tooltipContent.includes(query) || name.includes(query) || ort.includes(query);
     });
-  }
 
-  if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+    const bounds = L.latLngBounds();
+
+    matches.forEach((m, idx) => {
+      const latlng = m.marker.getLatLng();
+      if (!map.hasLayer(m.marker)) {
+        map.addLayer(m.marker);
+      }
+      bounds.extend(latlng);
+      if (idx === 0 && m.marker.openTooltip) {
+        m.marker.openTooltip();
+      }
+    });
+
+    try {
+      const geo = await geocode(raw);
+      if (geo) {
+        const latlng = [geo.lat, geo.lon];
+
+        searchResultMarker = L.circleMarker(latlng, {
+          radius: 8,
+          color: 'blue',
+          fillColor: 'blue',
+          fillOpacity: 0.5
+        }).addTo(map);
+
+        const countryText = geo.country ? `<br>${geo.country}` : "";
+        searchResultMarker
+          .bindPopup(`<b>${raw}</b>${countryText}<br><small>Jetzt ein Werk/Händler anklicken, um Route zu berechnen.</small>`)
+          .openPopup();
+
+        bounds.extend(latlng);
+
+        selectedPoints.push({
+          label: raw,
+          coord: { lat: geo.lat, lon: geo.lon }
+        });
+
+        searchResultMarker.on("click", () => {
+          selectedPoints = [{
+            label: raw,
+            coord: { lat: geo.lat, lon: geo.lon }
+          }];
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds.pad(0.2));
+    } else if (!matches.length) {
+      alert("Kein Treffer gefunden.");
+    }
+  }
 });
 
-
-
-/* =====================
-   INITIALISIEREN
-===================== */
-
-(async () => {
+(async ()=>{
   await ladeDaten();
   await buildMap();
 })();
 </script>
-
 </body>
 </html>
