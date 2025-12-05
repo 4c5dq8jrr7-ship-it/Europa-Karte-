@@ -160,10 +160,14 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-// dein OpenRouteService-Key
+// ----------------- CONFIG -----------------
 const ORS_API_KEY =
   "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjU1YTk0NDk1NjkyMjRkZGJhNGQ2Y2JkNDZkYTcxMTg5IiwiaCI6Im11cm11cjY0In0=";
 
+const sheetUrlFirmen ="https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+const sheetUrlKunden="https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
+
+// ----------------- MAP BASIS -----------------
 const map = L.map("map").setView([51,11],5);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   minZoom:4,maxZoom:18,attribution:"&copy; OpenStreetMap"
@@ -200,6 +204,7 @@ async function geocode(q){
   return null;
 }
 
+// Marker-Icons
 const blauesDreieck = L.divIcon({
   className:"custom-triangle",
   html:`<svg width="24" height="24" viewBox="0 0 24 24">
@@ -222,11 +227,12 @@ const orangeDreieck = L.divIcon({
   iconAnchor:[12,22],popupAnchor:[0,-20]
 });
 
-const sheetUrlFirmen ="https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-const sheetUrlKunden="https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
-
-let werke=[],kunden=[],alleMarker=[],selectedPoints=[],routeLine=null;
-let avgPriceByCountry={},searchResultMarker=null;
+// ----------------- DATEN -----------------
+let werke=[],kunden=[],alleMarker=[];
+let avgPriceByCountry={};
+let searchResultMarker=null;
+let selectedPoint=null;
+let routeLine=null;
 let countryGeoJson=null,countryLayer=null;
 
 const countryNameToCode={
@@ -394,11 +400,97 @@ function tooltipHtmlFromMarker(m){
   return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${avgTxt}`;
 }
 
+// -------- Route-Auswahl / Klick-Logik --------
+function clearRoute(){
+  if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+  selectedPoint=null;
+  map.closePopup();
+}
+
+function handleMarkerClick(marker){
+  const d = marker.customData;
+  if(!d) return;
+
+  if(!selectedPoint){
+    // erster Punkt
+    selectedPoint = d;
+    return;
+  }
+  // zweiter Punkt → Route
+  showRoute(selectedPoint,d);
+  selectedPoint = null;
+}
+
+// Kostenberechnung
+function berechneKosten(distKm,firmenPreis){
+  const preisProKm=distKm<250?2.15:1.85;
+  const teilstrecke=distKm/24;
+  const berechnung=teilstrecke*preisProKm;
+  const gesamt=((berechnung+(firmenPreis||0))*1.05).toFixed(2);
+  return {preisProKm,gesamt};
+}
+
+// Routing über OpenRouteService (driving-car)
+async function showRoute(a,b){
+  clearRoute();
+
+  const useSack=sackFilterAktiv();
+  const firmeneintrag=werke.find(w=>w.firma===a.label || w.firma===b.label);
+  const firmenPreis=firmeneintrag
+    ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
+    : 0;
+
+  const url =
+    `https://api.openrouteservice.org/v2/directions/driving-car` +
+    `?api_key=${encodeURIComponent(ORS_API_KEY)}` +
+    `&start=${a.lon},${a.lat}&end=${b.lon},${b.lat}`;
+
+  try{
+    const res=await fetch(url);
+    if(!res.ok) throw new Error("ORS HTTP "+res.status);
+    const data=await res.json();
+    const feat=data.features?.[0];
+    if(!feat) throw new Error("Keine Route");
+
+    const distKm=feat.properties.summary.distance/1000;
+    const dist=distKm.toFixed(1);
+    const durationMin=feat.properties.summary.duration/60;
+    const hours=Math.floor(durationMin/60);
+    const minutes=Math.round(durationMin%60);
+    const durationStr=hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+    const coords=feat.geometry.coordinates.map(c=>[c[1],c[0]]);
+    const {preisProKm,gesamt}=berechneKosten(distKm,firmenPreis);
+
+    routeLine=L.polyline(coords,{color:"blue",weight:5,opacity:0.8})
+      .addTo(map)
+      .on("click",clearRoute); // Klick auf Route = löschen
+
+    const mid=coords[Math.floor(coords.length/2)];
+    L.popup().setLatLng(mid).setContent(`
+      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+      <b>Entfernung:</b> ${dist} km (Straße)<br>
+      <b>Dauer:</b> ${durationStr}<br>
+      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+      <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+    `).openOn(map);
+
+    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
+  }catch(e){
+    console.error("ORS Routing-Fehler:",e);
+    alert("Die Route konnte nicht berechnet werden (OpenRouteService-Fehler, siehe Konsole).");
+  }
+}
+
+// Hintergrund-Klick: Route löschen
+map.on("click",clearRoute);
+
+// -------- Karte aufbauen --------
 async function buildMap(){
   alleMarker=[];
   const bounds=L.latLngBounds();
 
-  // Werke
+  // WERKE
   for(const w of werke){
     const c=geoCache[w.ort] && geoCache[w.ort].country_code ? geoCache[w.ort] : await geocode(w.ort);
     if(!c)continue;
@@ -416,7 +508,14 @@ async function buildMap(){
         country_code:(c.country_code||"")
       }));
     })
-    .on("click",ev=>handleMarkerClick(w.firma,ev.latlng)); // echte Marker-Position
+    .on("click",()=>handleMarkerClick(m));
+
+    m.customData = {
+      label:w.firma,
+      lat:c.lat,
+      lon:c.lon,
+      type:"werk"
+    };
 
     alleMarker.push({
       type:"firma",marker:m,
@@ -430,11 +529,10 @@ async function buildMap(){
     bounds.extend([c.lat,c.lon]);
   }
 
-  // Kunden
+  // KUNDEN
   for(const k of kunden){
     const c=geoCache[k.ort] && geoCache[k.ort].country_code ? geoCache[k.ort] : await geocode(k.ort);
     if(!c)continue;
-
     const isSackOnly=(k.sackware==="ja")&&(k.lose!=="ja");
     const isSonstige=(k.sonstige==="ja");
     let type="kunde",iconToUse=blauesDreieck;
@@ -443,7 +541,14 @@ async function buildMap(){
 
     const m=L.marker([c.lat,c.lon],{icon:iconToUse})
       .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
-      .on("click",ev=>handleMarkerClick(k.name,ev.latlng)); // echte Marker-Position
+      .on("click",()=>handleMarkerClick(m));
+
+    m.customData = {
+      label:k.name,
+      lat:c.lat,
+      lon:c.lon,
+      type
+    };
 
     alleMarker.push({
       type,marker:m,
@@ -458,6 +563,7 @@ async function buildMap(){
   updateLayers();
 }
 
+// -------- Filter / Länder / Layer --------
 function getSelectedCountries(){
   const chks=document.querySelectorAll(".countryChk");
   const selected=[];
@@ -646,89 +752,7 @@ async function updateLayers(){
   }
 }
 
-// Marker-Klick: Punkte merken
-function handleMarkerClick(label,latlng){
-  const coord={lat:latlng.lat,lon:latlng.lng};
-  selectedPoints.push({label,coord});
-  if(selectedPoints.length===2){
-    const [a,b]=selectedPoints;
-    showRoute(a,b);
-    selectedPoints=[];
-  }
-}
-
-// Kosten aus Entfernung
-function berechneKosten(distKm,firmenPreis){
-  const preisProKm=distKm<250?2.15:1.85;
-  const teilstrecke=distKm/24;
-  const berechnung=teilstrecke*preisProKm;
-  const gesamt=((berechnung+(firmenPreis||0))*1.05).toFixed(2);
-  return {preisProKm,gesamt};
-}
-
-// Routing über OpenRouteService (driving-car)
-async function showRoute(a,b){
-  if(routeLine){map.removeLayer(routeLine);routeLine=null;}
-
-  const useSack=sackFilterAktiv();
-  const firmeneintrag=werke.find(w=>w.firma===a.label || w.firma===b.label);
-  const firmenPreis=firmeneintrag
-    ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
-    : 0;
-
-  const coordsStr=`${a.coord.lon},${a.coord.lat}|${b.coord.lon},${b.coord.lat}`;
-  const url=`https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(ORS_API_KEY)}&start=${a.coord.lon},${a.coord.lat}&end=${b.coord.lon},${b.coord.lat}`;
-
-  try{
-    const res=await fetch(url);
-    if(!res.ok) throw new Error("ORS HTTP "+res.status);
-    const data=await res.json();
-
-    const feat=data.features?.[0];
-    if(!feat) throw new Error("Keine Route in Antwort");
-
-    const distKm=feat.properties.summary.distance/1000;
-    const dist=distKm.toFixed(1);
-    const durationMin=feat.properties.summary.duration/60;
-    const hours=Math.floor(durationMin/60);
-    const minutes=Math.round(durationMin%60);
-    const durationStr=hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
-
-    const coords=feat.geometry.coordinates.map(c=>[c[1],c[0]]);
-    const {preisProKm,gesamt}=berechneKosten(distKm,firmenPreis);
-
-    routeLine=L.polyline(coords,{color:"blue",weight:5,opacity:0.8}).addTo(map);
-
-    const mid=coords[Math.floor(coords.length/2)];
-    L.popup().setLatLng(mid).setContent(`
-      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Entfernung:</b> ${dist} km (Straße)<br>
-      <b>Dauer:</b> ${durationStr}<br>
-      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-      <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
-      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
-    `).openOn(map);
-
-    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-  }catch(e){
-    console.error("ORS Routing-Fehler:",e);
-    alert("Die Route konnte nicht berechnet werden (OpenRouteService-Fehler, siehe Konsole).");
-  }
-}
-
-// Karte-Klick: Route löschen (auch wenn man auf die Linie klickt)
-map.on("click",e=>{
-  const t=e.originalEvent && e.originalEvent.target;
-  if(t && t.closest){
-    // Marker & Popup NICHT als „Map-Klick“ behandeln,
-    // aber die Route (leaflet-interactive) soll gelöscht werden können
-    if(t.closest(".leaflet-marker-icon") || t.closest(".leaflet-popup")) return;
-  }
-  if(routeLine){map.removeLayer(routeLine);routeLine=null;}
-  selectedPoints=[];
-  map.closePopup();
-});
-
+// -------- Länder-Checkboxen / UI --------
 document.addEventListener("change",e=>{
   if(e.target && e.target.matches('input[type="checkbox"]')){
     if(e.target.classList.contains("countryChk")){
@@ -758,15 +782,14 @@ document.addEventListener("click",e=>{
   }
 });
 
-// Suche
+// -------- Suche / blauer Punkt --------
 document.getElementById("searchInput").addEventListener("keydown",async e=>{
   if(e.key!=="Enter")return;
   const raw=e.target.value.trim();
   const query=raw.toLowerCase();
   if(!query)return;
 
-  if(routeLine){map.removeLayer(routeLine);routeLine=null;}
-  selectedPoints=[];
+  clearRoute();
   if(searchResultMarker && map.hasLayer(searchResultMarker)){
     map.removeLayer(searchResultMarker);searchResultMarker=null;
   }
@@ -795,15 +818,25 @@ document.getElementById("searchInput").addEventListener("keydown",async e=>{
       searchResultMarker=L.circleMarker(latlng,{
         radius:8,color:"blue",fillColor:"blue",fillOpacity:0.5
       }).addTo(map);
+
+      searchResultMarker.customData = {
+        label: raw,
+        lat: geo.lat,
+        lon: geo.lon,
+        type: "suchpunkt"
+      };
+
+      searchResultMarker.on("click",()=>handleMarkerClick(searchResultMarker));
+
       const countryText=geo.country?`<br>${geo.country}`:"";
       searchResultMarker
         .bindPopup(`<b>${raw}</b>${countryText}<br><small>Jetzt ein Werk/Händler anklicken, um Route zu berechnen.</small>`)
         .openPopup();
+
       bounds.extend(latlng);
-      selectedPoints.push({label:raw,coord:{lat:geo.lat,lon:geo.lon}});
-      searchResultMarker.on("click",()=>{
-        selectedPoints=[{label:raw,coord:{lat:geo.lat,lon:geo.lon}}];
-      });
+
+      // Suchpunkt als Start setzen
+      selectedPoint = searchResultMarker.customData;
     }
   }catch(err){console.error(err);}
 
@@ -811,6 +844,7 @@ document.getElementById("searchInput").addEventListener("keydown",async e=>{
   else if(!matches.length) alert("Kein Treffer gefunden.");
 });
 
+// -------- Start --------
 (async()=>{
   await ladeDaten();
   await buildMap();
