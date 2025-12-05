@@ -164,6 +164,10 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+// >>> Dein OpenRouteService API-Key <<<
+const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjU1YTk0NDk1NjkyMjRkZGJhNGQ2Y2JkNDZkYTcxMTg5IiwiaCI6Im11cm11cjY0In0=";
+
+// Karte
 const map = L.map("map").setView([51, 11], 5);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   minZoom: 4,
@@ -236,7 +240,46 @@ let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = n
 let avgPriceByCountry = {};
 let searchResultMarker = null;
 
-// --- Daten einlesen ---
+let countryGeoJson = null;
+let countryLayer = null;
+
+const countryNameToCode = {
+  "germany": "de",
+  "bundesrepublik deutschland": "de",
+  "austria": "at",
+  "republic of austria": "at",
+  "poland": "pl",
+  "republic of poland": "pl",
+  "czech republic": "cz",
+  "czechia": "cz",
+  "france": "fr",
+  "french republic": "fr",
+  "switzerland": "ch",
+  "swiss confederation": "ch",
+  "sweden": "se",
+  "kingdom of sweden": "se",
+  "denmark": "dk",
+  "kingdom of denmark": "dk",
+  "finland": "fi",
+  "republic of finland": "fi",
+  "netherlands": "nl",
+  "kingdom of the netherlands": "nl",
+  "latvia": "lv",
+  "republic of latvia": "lv",
+  "lithuania": "lt",
+  "republic of lithuania": "lt",
+  "estonia": "ee",
+  "republic of estonia": "ee",
+  "united kingdom": "gb",
+  "united kingdom of great britain and northern ireland": "gb",
+  "great britain": "gb",
+  "belgium": "be",
+  "kingdom of belgium": "be",
+  "slovakia": "sk",
+  "slovak republic": "sk",
+  "italy": "it",
+  "italian republic": "it"
+};
 
 function parseFirmenWithHeader(rows){
   const lc = (s)=>String(s||"").toLowerCase();
@@ -352,8 +395,6 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// --- Durchschnitt pro Land (nicht entscheidend für die Route, behalten wir für Tooltip) ---
-
 function berechneDurchschnittProLand(){
   const sums   = {};
   const counts = {};
@@ -399,8 +440,6 @@ function tooltipHtmlFromMarker(m){
   return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${avgTxt}`;
 }
 
-// --- Karte mit Markern aufbauen ---
-
 async function buildMap(){
   alleMarker = [];
   const bounds=L.latLngBounds();
@@ -423,7 +462,7 @@ async function buildMap(){
           country_code: (c.country_code || "")
         }));
       })
-      .on("click",(ev)=>handleMarkerClick(w.firma, ev.latlng));
+      .on("click",()=>handleMarkerClick(w.firma,c));
 
     alleMarker.push({
       type:"firma",
@@ -464,7 +503,7 @@ async function buildMap(){
 
     const m=L.marker([c.lat,c.lon],{icon:iconToUse})
       .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
-      .on("click",(ev)=>handleMarkerClick(k.name, ev.latlng));
+      .on("click",()=>handleMarkerClick(k.name,c));
 
     alleMarker.push({
       type,
@@ -484,8 +523,6 @@ async function buildMap(){
   updateLayers();
 }
 
-// --- Filter / Layer ---
-
 function getSelectedCountries() {
   const chks = document.querySelectorAll(".countryChk");
   const selected = [];
@@ -503,15 +540,125 @@ function updateCountryButtonLabel() {
     btn.textContent = "Alle Länder";
   } else {
     const names = {
-      be:"BE", dk:"DK", de:"DE", ee:"EE", fi:"FI", fr:"FR", it:"IT",
-      lv:"LV", lt:"LT", nl:"NL", at:"AT", pl:"PL", se:"SE", ch:"CH",
-      sk:"SK", cz:"CZ", gb:"UK"
+      be:"BE",
+      dk:"DK",
+      de:"DE",
+      ee:"EE",
+      fi:"FI",
+      fr:"FR",
+      it:"IT",
+      lv:"LV",
+      lt:"LT",
+      nl:"NL",
+      at:"AT",
+      pl:"PL",
+      se:"SE",
+      ch:"CH",
+      sk:"SK",
+      cz:"CZ",
+      gb:"UK"
     };
     btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
   }
 }
 
+async function ensureCountryGeoJsonLoaded() {
+  if (countryGeoJson) return;
+  try{
+    const resp = await fetch("https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json");
+    countryGeoJson = await resp.json();
+  }catch(e){
+    console.error("Konnte Länder-GeoJSON nicht laden:", e);
+    alert("Länderflächen konnten nicht geladen werden (GeoJSON-Download).");
+  }
+}
+
+function getCountryStyleForAvg(avg){
+  if (!avg || !isFinite(avg)) {
+    return {
+      color: "#555",
+      weight: 1,
+      fillColor: "transparent",
+      fillOpacity: 0
+    };
+  }
+  let fillColor, borderColor;
+  if (avg <= 260) {
+    fillColor = "green";
+    borderColor = "#004400";
+  } else if (avg < 285) {
+    fillColor = "orange";
+    borderColor = "#aa5500";
+  } else {
+    fillColor = "red";
+    borderColor = "#880000";
+  }
+  return {
+    color: borderColor,
+    weight: 2,
+    fillColor: fillColor,
+    fillOpacity: 0.3
+  };
+}
+
+async function showCountryAveragePolygons(){
+  alleMarker.forEach(m=>{ if(map.hasLayer(m.marker)) map.removeLayer(m.marker); });
+
+  await ensureCountryGeoJsonLoaded();
+  if (!countryGeoJson) return;
+
+  if (countryLayer) {
+    map.removeLayer(countryLayer);
+    countryLayer = null;
+  }
+
+  const selectedCountries = getSelectedCountries();
+  const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
+
+  const relevant = [
+    "de","at","pl","cz","fr","ch","se","dk","fi",
+    "nl","lv","lt","ee","gb","be","sk","it"
+  ];
+
+  countryLayer = L.geoJSON(countryGeoJson, {
+    filter: function(feature){
+      const props = feature.properties || {};
+      const nameRaw = (props.name || props.ADMIN || "").toLowerCase();
+      const code = countryNameToCode[nameRaw];
+      if (!code) return false;
+      if (!relevant.includes(code)) return false;
+      if (noCountryFilter) return true;
+      return selectedCountries.includes(code);
+    },
+    style: function(feature){
+      const props = feature.properties || {};
+      const nameRaw = (props.name || props.ADMIN || "").toLowerCase();
+      const code = countryNameToCode[nameRaw];
+      const avg = avgPriceByCountry[code];
+      return getCountryStyleForAvg(avg);
+    },
+    onEachFeature: function(feature, layer){
+      const props = feature.properties || {};
+      const nameRaw = (props.name || props.ADMIN || "").toLowerCase();
+      const code = countryNameToCode[nameRaw];
+      const avg = avgPriceByCountry[code];
+      const name = props.name || props.ADMIN || (code ? code.toUpperCase() : "");
+      const avgTxt = avg && isFinite(avg) ? avg.toFixed(2) + " €" : "keine Daten";
+      layer.bindTooltip(`<b>${name}</b><br>Durchschnittspreis: ${avgTxt}`, {sticky:true});
+    }
+  }).addTo(map);
+}
+
+function hideCountryPolygons(){
+  if (countryLayer) {
+    map.removeLayer(countryLayer);
+    countryLayer = null;
+  }
+}
+
 async function updateLayers(){
+  hideCountryPolygons();
+
   alleMarker.forEach(m=>{ if(map.hasLayer(m.marker)) map.removeLayer(m.marker); });
 
   const selectedCountries = getSelectedCountries();
@@ -540,6 +687,7 @@ async function updateLayers(){
     kundenFlag || sackKundenFlag || sonstigeFlag;
 
   if (!anyMarkerCheckboxOn) {
+    await showCountryAveragePolygons();
     return;
   }
 
@@ -613,11 +761,9 @@ async function updateLayers(){
   }
 }
 
-// --- Routing ---
-
-function handleMarkerClick(label, latlng){
-  const coord = { lat: latlng.lat, lon: latlng.lng };
-  selectedPoints.push({ label, coord });
+// Klick: Punkte sammeln
+function handleMarkerClick(label, coord){
+  selectedPoints.push({label, coord});
   if(selectedPoints.length===2){
     const [a,b]=selectedPoints;
     showRoute(a,b);
@@ -625,15 +771,16 @@ function handleMarkerClick(label, latlng){
   }
 }
 
-function berechneKosten(distKm, firmenPreis, useSack){
+// Kosten aus Entfernung
+function berechneKosten(distKm, firmenPreis){
   const preisProKm = distKm < 250 ? 2.15 : 1.85;
   const teilstrecke = distKm / 24;
   const berechnung = teilstrecke * preisProKm;
   const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
-  return {preisProKm, gesamt};
+  return { preisProKm, gesamt };
 }
 
-// echte Straßenroute über OSRM
+// Routing NUR über OpenRouteService, KEINE Luftlinie
 async function showRoute(a,b){
   if(routeLine) {
     map.removeLayer(routeLine);
@@ -646,28 +793,41 @@ async function showRoute(a,b){
     ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
     : 0;
 
-  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+  const body = {
+    coordinates: [
+      [a.coord.lon, a.coord.lat],
+      [b.coord.lon, b.coord.lat]
+    ]
+  };
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("OSRM HTTP " + res.status);
-    const data = await res.json();
-    console.log("OSRM Antwort:", data);
+    const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-hgv/geojson", {
+      method: "POST",
+      headers: {
+        "Authorization": ORS_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
 
-    if(!data.routes || !data.routes.length) {
+    if (!res.ok) throw new Error("ORS HTTP " + res.status);
+    const data = await res.json();
+
+    if (!data.features || !data.features.length) {
       throw new Error("Keine Route gefunden");
     }
 
-    const route = data.routes[0];
-    const distKm = route.distance / 1000;
+    const feat = data.features[0];
+    const distKm = feat.properties.summary.distance / 1000;
     const dist = distKm.toFixed(1);
-    const durationMin = route.duration/60;
+    const durationMin = feat.properties.summary.duration / 60;
     const hours = Math.floor(durationMin/60);
     const minutes = Math.round(durationMin%60);
-    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
-    const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+    const durationStr = hours>0 ? `${hours}h ${minutes}min` : `${minutes}min`;
 
-    const {preisProKm, gesamt} = berechneKosten(distKm, firmenPreis, useSack);
+    const coords = feat.geometry.coordinates.map(c => [c[1], c[0]]);
+
+    const {preisProKm, gesamt} = berechneKosten(distKm, firmenPreis);
 
     routeLine = L.polyline(coords,{
       color:'blue',
@@ -686,15 +846,12 @@ async function showRoute(a,b){
     `).openOn(map);
 
     map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-  } catch(e){
-    console.error("Routing-Fehler:", e);
-    alert("Die echte Straßenroute konnte nicht geladen werden.\n" +
-          "Mögliche Gründe: OSRM-Server blockiert oder offline.\n" +
-          "Siehe Entwicklerkonsole (F12) für Details.");
+  } catch (e) {
+    console.error("ORS Routing-Fehler:", e);
+    alert("Die Route konnte über OpenRouteService nicht berechnet werden.\n" +
+          "Schau in der Browser-Konsole (F12) nach Details.");
   }
 }
-
-// --- Interaktionen ---
 
 map.on('click', (e) => {
   const t = e.originalEvent && e.originalEvent.target;
@@ -742,7 +899,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Suche + blauer Suchpunkt
+// Suche
 document.getElementById("searchInput").addEventListener("keydown", async e => {
   if (e.key === "Enter") {
     const raw = e.target.value.trim();
@@ -826,8 +983,6 @@ document.getElementById("searchInput").addEventListener("keydown", async e => {
     }
   }
 });
-
-// --- Start ---
 
 (async ()=>{
   await ladeDaten();
