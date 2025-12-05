@@ -10,18 +10,21 @@
     html,body{height:100%;margin:0}
     #map{width:100%;height:100%}
 
+    /* Grundboxen */
     .legend, .cert-box {
       position:absolute;background:#fff;padding:8px 10px;
       border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.12);
       font:14px/1.3 system-ui,Arial,sans-serif;
     }
 
+    /* Zertifikate-Box unten links */
     .cert-box{
       bottom:12px;
       left:12px;
       z-index:1000;
     }
 
+    /* Legende unten rechts */
     .legend{
       bottom:12px;
       right:12px;
@@ -48,6 +51,7 @@
     }
     .cert-box hr{border:none;height:1px;background:#eee;margin:6px 0}
 
+    /* custom dropdown */
     .country-dropdown {
       position: relative;
       display: block;
@@ -77,29 +81,18 @@
       border: 1px solid #ccc;
       border-radius: 4px;
       box-shadow: 0 2px 8px rgba(0,0,0,.12);
-      z-index: 4000;
+      z-index: 4000;          /* ganz vorne */
       display: none;
       min-width: 160px;
-      max-height: 260px;
+      max-height: 260px;      /* höher, scrollbar */
       overflow-y: auto;
       padding: 6px 8px;
       box-sizing:border-box;
     }
-
     .country-dropdown-menu label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 2px 0;
+      display: block;
       cursor: pointer;
-      margin: 0;
-      white-space: nowrap;
-    }
-    .country-dropdown-menu input[type="checkbox"] {
-      width:14px;
-      height:14px;
-      margin:0;
-      flex-shrink:0;
+      margin-bottom: 3px;
     }
   </style>
 </head>
@@ -115,23 +108,14 @@
     <div class="country-dropdown-button" id="countryDropdownBtn">Alle Länder</div>
     <div class="country-dropdown-menu" id="countryDropdownMenu">
       <label><input type="checkbox" class="countryChk" value="all" checked> Alle</label>
-      <label><input type="checkbox" class="countryChk" value="be"> Belgien</label>
-      <label><input type="checkbox" class="countryChk" value="dk"> Dänemark</label>
       <label><input type="checkbox" class="countryChk" value="de"> Deutschland</label>
-      <label><input type="checkbox" class="countryChk" value="ee"> Estland</label>
-      <label><input type="checkbox" class="countryChk" value="fi"> Finnland</label>
-      <label><input type="checkbox" class="countryChk" value="fr"> Frankreich</label>
-      <label><input type="checkbox" class="countryChk" value="it"> Italien</label>
-      <label><input type="checkbox" class="countryChk" value="lv"> Lettland</label>
-      <label><input type="checkbox" class="countryChk" value="lt"> Litauen</label>
-      <label><input type="checkbox" class="countryChk" value="nl"> Niederlande</label>
       <label><input type="checkbox" class="countryChk" value="at"> Österreich</label>
       <label><input type="checkbox" class="countryChk" value="pl"> Polen</label>
-      <label><input type="checkbox" class="countryChk" value="se"> Schweden</label>
-      <label><input type="checkbox" class="countryChk" value="ch"> Schweiz</label>
-      <label><input type="checkbox" class="countryChk" value="sk"> Slowakei</label>
       <label><input type="checkbox" class="countryChk" value="cz"> Tschechien</label>
-      <label><input type="checkbox" class="countryChk" value="gb"> United Kingdom</label>
+      <label><input type="checkbox" class="countryChk" value="fr"> Frankreich</label>
+      <label><input type="checkbox" class="countryChk" value="ch"> Schweiz</label>
+      <label><input type="checkbox" class="countryChk" value="be"> Belgien</label>
+      <label><input type="checkbox" class="countryChk" value="sk"> Slowakei</label>
     </div>
   </div>
 </div>
@@ -142,7 +126,7 @@
   <label><input type="checkbox" id="chkEnPlus" checked> EnPlus</label><br>
   <label><input type="checkbox" id="chkDINplus" checked> DINplus</label><br>
   <label><input type="checkbox" id="chkSURE" checked> SURE</label><br>
-  <label><input type="checkbox" id="chkCPP" checked> CPP</label><br>
+  <label><input type="checkbox" id="chkCPP" checked> CPP</label><br><!-- NEU -->
   <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
   <hr>
   <b>Sackware</b><br>
@@ -150,25 +134,22 @@
   <label><input type="checkbox" id="chkSack15kg"> 15 kg</label>
 </div>
 
-<!-- Legende unten rechts -->
+<!-- Legende nur für Farben + Kunden, unten rechts -->
 <div class="legend">
   <b>Filter Farben</b><br>
   <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
   <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
   <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
   <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label><br>
-  <label><input type="checkbox" id="chkKunden" checked> 🔷 Pellethändler</label><br>
-  <label><input type="checkbox" id="chkSackKunden" checked> 🟣 Sackwaren Händler</label><br>
-  <label><input type="checkbox" id="chkSonstigeKunden" checked> 🔶 Sonstige Kunden</label>
+  <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label><br>
+  <label><input type="checkbox" id="chkSackKunden" checked> 🟣 Sackwaren-Kunden</label>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const map = L.map("map").setView([51, 11], 5);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  minZoom: 4,
-  maxZoom: 18,
-  attribution: "&copy; OpenStreetMap"
+  minZoom: 4, maxZoom: 10, attribution: "&copy; OpenStreetMap"
 }).addTo(map);
 
 function colorForPrice(p, keinPreis) {
@@ -220,23 +201,11 @@ const lilaDreieck = L.divIcon({
   iconAnchor: [12,22],
   popupAnchor: [0,-20]
 });
-const orangeDreieck = L.divIcon({
-  className: "custom-triangle-orange",
-  html: `<svg width="24" height="24" viewBox="0 0 24 24">
-           <polygon points="12,2 22,22 2,22" fill="orange" stroke="black" stroke-width="1"/>
-         </svg>`,
-  iconAnchor: [12,22],
-  popupAnchor: [0,-20]
-});
 
 const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
 const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
 
 let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
-let avgPriceByCountry = {};
-let searchResultMarker = null;
-
-// --- Daten einlesen ---
 
 function parseFirmenWithHeader(rows){
   const lc = (s)=>String(s||"").toLowerCase();
@@ -310,15 +279,13 @@ async function ladeDaten() {
         const ortKey = headers.find(h=>["ort","adresse","standort","anschrift","stadt","location"].includes(h.toLowerCase()))||"ort";
         const loseKey = headers.find(h=>h.toLowerCase()==="lose") || "lose";
         const sackKey = headers.find(h=>h.toLowerCase()==="sackware") || "sackware";
-        const sonstKey = headers.find(h=>h.toLowerCase().includes("sonstige")) || "sonstige";
 
         const kundenDaten = r.data
           .map(x=>({
             name:(x[nameKey]||"").trim(),
             ort:(x[ortKey]||"").trim(),
             lose:(x[loseKey]||"").trim().toLowerCase(),
-            sackware:(x[sackKey]||"").trim().toLowerCase(),
-            sonstige:(x[sonstKey]||"").trim().toLowerCase()
+            sackware:(x[sackKey]||"").trim().toLowerCase()
           }))
           .filter(x=>x.name && x.ort);
 
@@ -352,54 +319,14 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// --- Durchschnitt pro Land (nicht entscheidend für die Route, behalten wir für Tooltip) ---
-
-function berechneDurchschnittProLand(){
-  const sums   = {};
-  const counts = {};
-
-  alleMarker.forEach(m => {
-    if (m.type !== "firma") return;
-    const cc = m.country_code || "";
-    if (!cc) return;
-    if (m.keinPreisWerk) return;
-
-    const preis = m.preis;
-    if (!isFinite(preis) || preis <= 0) return;
-
-    if (!sums[cc]) {
-      sums[cc] = 0;
-      counts[cc] = 0;
-    }
-    sums[cc]   += preis;
-    counts[cc] += 1;
-  });
-
-  avgPriceByCountry = {};
-  Object.keys(sums).forEach(cc => {
-    if (counts[cc] > 0) {
-      avgPriceByCountry[cc] = sums[cc] / counts[cc];
-    }
-  });
-}
-
 function tooltipHtmlFromMarker(m){
   const useSack = sackFilterAktiv();
   const preisNow = useSack && isFinite(m.preisSack) && m.preisSack > 0 ? m.preisSack : m.preis;
   const preisTxt = isFinite(preisNow) && preisNow > 0 ? `${preisNow.toFixed(2)} €` : "–";
   const zertInfo = m.zert ? `<br><b>Zertifikat:</b> ${m.zert}` : "";
   const sackInfo = m.sack ? `<br><b>Sackware:</b> ${m.sack}` : "";
-
-  let avgTxt = "";
-  const avg = avgPriceByCountry[m.country_code];
-  if (avg && isFinite(avg)) {
-    avgTxt = `<br><b>Landesdurchschnitt:</b> ${avg.toFixed(2)} €`;
-  }
-
-  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${avgTxt}`;
+  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}`;
 }
-
-// --- Karte mit Markern aufbauen ---
 
 async function buildMap(){
   alleMarker = [];
@@ -419,11 +346,10 @@ async function buildMap(){
           firma:w.firma, ort:w.ort,
           preis:w.preis, preisSack:w.preisSack,
           zert:(w.zert||""),
-          sack:(w.sack||""),
-          country_code: (c.country_code || "")
+          sack:(w.sack||"")
         }));
       })
-      .on("click",(ev)=>handleMarkerClick(w.firma, ev.latlng));
+      .on("click",()=>handleMarkerClick(w.firma,c));
 
     alleMarker.push({
       type:"firma",
@@ -449,49 +375,33 @@ async function buildMap(){
     if(!c)continue;
 
     const isSackOnly = (k.sackware === "ja") && (k.lose !== "ja");
-    const isSonstige = (k.sonstige === "ja");
-
-    let type = "kunde";
-    let iconToUse = blauesDreieck;
-
-    if (isSonstige) {
-      type = "sonstige";
-      iconToUse = orangeDreieck;
-    } else if (isSackOnly) {
-      type = "sackkunde";
-      iconToUse = lilaDreieck;
-    }
+    const iconToUse = isSackOnly ? lilaDreieck : blauesDreieck;
 
     const m=L.marker([c.lat,c.lon],{icon:iconToUse})
       .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
-      .on("click",(ev)=>handleMarkerClick(k.name, ev.latlng));
+      .on("click",()=>handleMarkerClick(k.name,c));
 
     alleMarker.push({
-      type,
+      type: isSackOnly ? "sackkunde" : "kunde",
       marker:m,
-      name: k.name,
-      ort: k.ort,
-      sonstige: k.sonstige,
       country_code: (c.country_code || "")
     });
 
     bounds.extend([c.lat,c.lon]);
   }
 
-  berechneDurchschnittProLand();
-
   if(bounds.isValid())map.fitBounds(bounds.pad(0.15));
   updateLayers();
 }
 
-// --- Filter / Layer ---
-
+// liest alle angehakten Länder aus dem Dropdown
 function getSelectedCountries() {
   const chks = document.querySelectorAll(".countryChk");
   const selected = [];
   chks.forEach(ch => {
     if (ch.checked) selected.push(ch.value);
   });
+  // wenn "all" angehakt ist oder nichts -> ["all"]
   if (selected.length === 0 || selected.includes("all")) return ["all"];
   return selected;
 }
@@ -502,16 +412,22 @@ function updateCountryButtonLabel() {
   if (selected.length === 1 && selected[0] === "all") {
     btn.textContent = "Alle Länder";
   } else {
+    // kleine Labels
     const names = {
-      be:"BE", dk:"DK", de:"DE", ee:"EE", fi:"FI", fr:"FR", it:"IT",
-      lv:"LV", lt:"LT", nl:"NL", at:"AT", pl:"PL", se:"SE", ch:"CH",
-      sk:"SK", cz:"CZ", gb:"UK"
+      de: "DE",
+      at: "AT",
+      pl: "PL",
+      cz: "CZ",
+      fr: "FR",
+      ch: "CH",
+      be: "BE",
+      sk: "SK"
     };
-    btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
+    btn.textContent = selected.map(c => names[c] || c).join(", ");
   }
 }
 
-async function updateLayers(){
+function updateLayers(){
   alleMarker.forEach(m=>{ if(map.hasLayer(m.marker)) map.removeLayer(m.marker); });
 
   const selectedCountries = getSelectedCountries();
@@ -520,7 +436,7 @@ async function updateLayers(){
   const en         = document.getElementById("chkEnPlus").checked;
   const din        = document.getElementById("chkDINplus").checked;
   const sure       = document.getElementById("chkSURE").checked;
-  const cpp        = document.getElementById("chkCPP").checked;
+  const cpp        = document.getElementById("chkCPP").checked;   // NEU
   const ohne       = document.getElementById("chkOhneZert").checked;
 
   const gruen      = document.getElementById("chkGruen").checked;
@@ -529,21 +445,13 @@ async function updateLayers(){
   const grau       = document.getElementById("chkGrau").checked;
   const kundenFlag = document.getElementById("chkKunden").checked;
   const sackKundenFlag = document.getElementById("chkSackKunden").checked;
-  const sonstigeFlag = document.getElementById("chkSonstigeKunden").checked;
 
   const wantFireflies = document.getElementById("chkSackFireflies").checked;
   const want15kg      = document.getElementById("chkSack15kg").checked;
   const useSack       = (wantFireflies || want15kg);
 
-  const anyMarkerCheckboxOn =
-    gruen || orange || rot || grau ||
-    kundenFlag || sackKundenFlag || sonstigeFlag;
-
-  if (!anyMarkerCheckboxOn) {
-    return;
-  }
-
   for(const m of alleMarker){
+    // Kunden
     if(m.type === "kunde"){
       if (kundenFlag) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
@@ -560,15 +468,8 @@ async function updateLayers(){
       }
       continue;
     }
-    if(m.type === "sonstige"){
-      if (sonstigeFlag) {
-        if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
-          map.addLayer(m.marker);
-        }
-      }
-      continue;
-    }
 
+    // Firmen
     if (useSack) {
       const sNorm = (m.sack||"").toLowerCase().replace(/\s+/g,' ').trim();
       const hasFireflies = sNorm.includes("fireflies");
@@ -583,7 +484,7 @@ async function updateLayers(){
     if(z.includes("enplus") && en) zertOK = true;
     if(z.includes("dinplus") && din) zertOK = true;
     if(z.includes("sure") && sure) zertOK = true;
-    if(z.includes("cpp") && cpp) zertOK = true;
+    if(z.includes("cpp") && cpp) zertOK = true;   // NEU
     if(!z && ohne) zertOK = true;
     if(!zertOK) continue;
 
@@ -601,6 +502,7 @@ async function updateLayers(){
     if(isGrau && grau) sichtbar = true;
     if(!sichtbar) continue;
 
+    // Länderfilter
     if (!noCountryFilter) {
       if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
     }
@@ -613,11 +515,8 @@ async function updateLayers(){
   }
 }
 
-// --- Routing ---
-
-function handleMarkerClick(label, latlng){
-  const coord = { lat: latlng.lat, lon: latlng.lng };
-  selectedPoints.push({ label, coord });
+function handleMarkerClick(label,coord){
+  selectedPoints.push({label,coord});
   if(selectedPoints.length===2){
     const [a,b]=selectedPoints;
     showRoute(a,b);
@@ -625,80 +524,50 @@ function handleMarkerClick(label, latlng){
   }
 }
 
-function berechneKosten(distKm, firmenPreis, useSack){
-  const preisProKm = distKm < 250 ? 2.15 : 1.85;
-  const teilstrecke = distKm / 24;
-  const berechnung = teilstrecke * preisProKm;
-  const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
-  return {preisProKm, gesamt};
-}
-
-// echte Straßenroute über OSRM
 async function showRoute(a,b){
-  if(routeLine) {
-    map.removeLayer(routeLine);
-    routeLine = null;
-  }
-
-  const useSack = sackFilterAktiv();
-  const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-  const firmenPreis = firmeneintrag
-    ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
-    : 0;
-
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
-
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("OSRM HTTP " + res.status);
-    const data = await res.json();
-    console.log("OSRM Antwort:", data);
-
-    if(!data.routes || !data.routes.length) {
-      throw new Error("Keine Route gefunden");
-    }
-
+  const res = await fetch(url);
+  const data = await res.json();
+  if(data.routes && data.routes.length){
     const route = data.routes[0];
-    const distKm = route.distance / 1000;
-    const dist = distKm.toFixed(1);
+    const dist = (route.distance/1000).toFixed(1);
     const durationMin = route.duration/60;
     const hours = Math.floor(durationMin/60);
     const minutes = Math.round(durationMin%60);
     const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
     const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
-    const {preisProKm, gesamt} = berechneKosten(distKm, firmenPreis, useSack);
+    const useSack = sackFilterAktiv();
+    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+    const firmenPreis = firmeneintrag
+      ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
+      : 0;
 
-    routeLine = L.polyline(coords,{
-      color:'blue',
-      weight:5,
-      opacity:0.8
-    }).addTo(map);
+    const preisProKm = parseFloat(dist) < 250 ? 2.15 : 1.85;
+    const teilstrecke = parseFloat(dist) / 24;
+    const berechnung = teilstrecke * preisProKm;
+    const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
+    if(routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
     const mid = coords[Math.floor(coords.length/2)];
     L.popup().setLatLng(mid).setContent(`
       <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Entfernung:</b> ${dist} km (Straße)<br>
+      <b>Entfernung:</b> ${dist} km<br>
       <b>Dauer:</b> ${durationStr}<br>
       <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
       <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
       <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
     `).openOn(map);
-
     map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-  } catch(e){
-    console.error("Routing-Fehler:", e);
-    alert("Die echte Straßenroute konnte nicht geladen werden.\n" +
-          "Mögliche Gründe: OSRM-Server blockiert oder offline.\n" +
-          "Siehe Entwicklerkonsole (F12) für Details.");
-  }
+  } else alert("Keine Route gefunden!");
 }
 
-// --- Interaktionen ---
-
+// Klick auf „leere“ Karte entfernt Strecke & Popup, aber Marker/Routeklick bleibt normal
 map.on('click', (e) => {
   const t = e.originalEvent && e.originalEvent.target;
   if (t && t.closest) {
+    // Wenn auf Marker, Popup oder Linie geklickt -> nichts machen
     if (t.closest('.leaflet-marker-icon') ||
         t.closest('.leaflet-popup') ||
         t.closest('.leaflet-interactive')) {
@@ -713,14 +582,18 @@ map.on('click', (e) => {
   map.closePopup();
 });
 
+// globale Change-Listener
 document.addEventListener("change", e => {
   if (e.target && e.target.matches('input[type="checkbox"]')) {
+    // wenn es eine der Länder-Checkboxen ist:
     if (e.target.classList.contains("countryChk")) {
+      // wenn "Alle" angeklickt wird -> alle anderen aus
       if (e.target.value === "all" && e.target.checked) {
         document.querySelectorAll(".countryChk").forEach(ch => {
           if (ch.value !== "all") ch.checked = false;
         });
       } else if (e.target.value !== "all" && e.target.checked) {
+        // wenn ein Land angehakt wird -> "Alle" aus
         const allChk = document.querySelector('.countryChk[value="all"]');
         allChk.checked = false;
       }
@@ -730,11 +603,13 @@ document.addEventListener("change", e => {
   }
 });
 
+// dropdown auf/zu
 document.getElementById("countryDropdownBtn").addEventListener("click", () => {
   const menu = document.getElementById("countryDropdownMenu");
   menu.style.display = (menu.style.display === "block") ? "none" : "block";
 });
 
+// außerhalb klicken -> zu
 document.addEventListener("click", (e) => {
   const dd = document.getElementById("countryDropdown");
   if (!dd.contains(e.target)) {
@@ -742,92 +617,21 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Suche + blauer Suchpunkt
-document.getElementById("searchInput").addEventListener("keydown", async e => {
-  if (e.key === "Enter") {
-    const raw = e.target.value.trim();
-    const query = raw.toLowerCase();
-    if (!query) return;
-
-    if (routeLine) {
-      map.removeLayer(routeLine);
-      routeLine = null;
-    }
-    selectedPoints = [];
-
-    if (searchResultMarker && map.hasLayer(searchResultMarker)) {
-      map.removeLayer(searchResultMarker);
-      searchResultMarker = null;
-    }
-
-    const matches = alleMarker.filter(m => {
-      const tooltipContent = (m.marker.getTooltip && m.marker.getTooltip().getContent)
-        ? String(m.marker.getTooltip().getContent()).toLowerCase()
-        : "";
-
-      const name = (m.firma || m.name || "").toLowerCase();
-      const ort  = (m.ort   || "").toLowerCase();
-
-      return tooltipContent.includes(query) || name.includes(query) || ort.includes(query);
-    });
-
-    const bounds = L.latLngBounds();
-
-    matches.forEach((m, idx) => {
-      const latlng = m.marker.getLatLng();
-      if (!map.hasLayer(m.marker)) {
-        map.addLayer(m.marker);
-      }
-      bounds.extend(latlng);
-      if (idx === 0 && m.marker.openTooltip) {
-        m.marker.openTooltip();
-      }
-    });
-
-    try {
-      const geo = await geocode(raw);
-      if (geo) {
-        const latlng = [geo.lat, geo.lon];
-
-        searchResultMarker = L.circleMarker(latlng, {
-          radius: 8,
-          color: 'blue',
-          fillColor: 'blue',
-          fillOpacity: 0.5
-        }).addTo(map);
-
-        const countryText = geo.country ? `<br>${geo.country}` : "";
-        searchResultMarker
-          .bindPopup(`<b>${raw}</b>${countryText}<br><small>Jetzt ein Werk/Händler anklicken, um Route zu berechnen.</small>`)
-          .openPopup();
-
-        bounds.extend(latlng);
-
-        selectedPoints.push({
-          label: raw,
-          coord: { lat: geo.lat, lon: geo.lon }
-        });
-
-        searchResultMarker.on("click", () => {
-          selectedPoints = [{
-            label: raw,
-            coord: { lat: geo.lat, lon: geo.lon }
-          }];
-        });
-      }
-    } catch (err) {
-      console.error(err);
-    }
-
-    if (bounds.isValid()) {
-      map.fitBounds(bounds.pad(0.2));
-    } else if (!matches.length) {
-      alert("Kein Treffer gefunden.");
-    }
+document.getElementById("searchInput").addEventListener("keydown", e => {
+  if(e.key === "Enter"){
+    const query = e.target.value.toLowerCase().trim();
+    if(!query) return;
+    const treffer = alleMarker.find(m =>
+      m.marker.getTooltip && m.marker.getTooltip().getContent &&
+      String(m.marker.getTooltip().getContent()).toLowerCase().includes(query)
+    );
+    if(treffer){
+      const latlng = treffer.marker.getLatLng();
+      map.setView(latlng,9);
+      treffer.marker.openTooltip();
+    } else alert("Kein Treffer gefunden.");
   }
 });
-
-// --- Start ---
 
 (async ()=>{
   await ladeDaten();
