@@ -209,6 +209,7 @@ const blauesDreieck = L.divIcon({
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
            <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
          </svg>`,
+
   iconAnchor: [12,22],
   popupAnchor: [0,-20]
 });
@@ -293,6 +294,7 @@ function parseFirmenWithHeader(rows){
   const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
   const sackKey = findKey(["sackware","sack","bag","bagged"]);
 
+
   return rows
     .filter(x => (x?.[nameKey]||"").toString().trim() && (x?.[ortKey]||"").toString().trim())
     .map(x => ({
@@ -361,6 +363,7 @@ async function ladeDaten() {
             sackware:(x[sackKey]||"").trim().toLowerCase(),
             sonstige:(x[sonstKey]||"").trim().toLowerCase()
           }))
+
           .filter(x=>x.name && x.ort);
 
         resolve(kundenDaten);
@@ -393,20 +396,15 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// ⬇⬇⬇ HIER ist die geänderte Funktion ⬇⬇⬇
 // Durchschnitt pro Land (Werkspreise, nur Werke MIT echtem Preis)
 function berechneDurchschnittProLand(){
   const sums   = {};
   const counts = {};
 
   alleMarker.forEach(m => {
-    // nur Werke berücksichtigen
     if (m.type !== "firma") return;
-
     const cc = m.country_code || "";
     if (!cc) return;
-
-    // WICHTIG: Werke ohne echten Preis NICHT in den Durchschnitt einfließen lassen
     if (m.keinPreisWerk) return;
 
     const preis = m.preis;
@@ -427,7 +425,6 @@ function berechneDurchschnittProLand(){
     }
   });
 }
-// ⬆⬆⬆ Ende Änderung ⬆⬆⬆
 
 function tooltipHtmlFromMarker(m){
   const useSack = sackFilterAktiv();
@@ -467,7 +464,7 @@ async function buildMap(){
           country_code: (c.country_code || "")
         }));
       })
-      .on("click",()=>handleMarkerClick(w.firma,c));
+      .on("click",(ev)=>handleMarkerClick(w.firma, ev.latlng));   // <- geändert
 
     alleMarker.push({
       type:"firma",
@@ -508,7 +505,7 @@ async function buildMap(){
 
     const m=L.marker([c.lat,c.lon],{icon:iconToUse})
       .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
-      .on("click",()=>handleMarkerClick(k.name,c));
+      .on("click",(ev)=>handleMarkerClick(k.name, ev.latlng));   // <- geändert
 
     alleMarker.push({
       type,
@@ -602,8 +599,8 @@ function getCountryStyleForAvg(avg){
   return {
     color: borderColor,
     weight: 2,
-      fillColor: fillColor,
-      fillOpacity: 0.3
+    fillColor: fillColor,
+    fillOpacity: 0.3
   };
 }
 
@@ -767,8 +764,10 @@ async function updateLayers(){
   }
 }
 
-function handleMarkerClick(label,coord){
-  selectedPoints.push({label,coord});
+// NEU: Klick nutzt Marker-LatLng
+function handleMarkerClick(label, latlng){
+  const coord = { lat: latlng.lat, lon: latlng.lng };
+  selectedPoints.push({ label, coord });
   if(selectedPoints.length===2){
     const [a,b]=selectedPoints;
     showRoute(a,b);
