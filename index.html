@@ -772,7 +772,7 @@ function handleMarkerClick(label, latlng){
   }
 }
 
-// Entfernung in km (Haversine)
+// Haversine für den Fallback / Kosten
 function berechneEntfernungKm(aCoord, bCoord){
   const R = 6371;
   const toRad = deg => deg * Math.PI / 180;
@@ -787,28 +787,71 @@ function berechneEntfernungKm(aCoord, bCoord){
   return R * c;
 }
 
-// Nur interne Berechnung, keine externe Routing-API
-function showRoute(a,b){
+// zuerst OSRM (glatt), wenn das nicht geht -> Luftlinie (gepunktet)
+async function showRoute(a,b){
   if(routeLine) {
     map.removeLayer(routeLine);
     routeLine = null;
   }
-
-  const distNum = berechneEntfernungKm(a.coord, b.coord);
-  const dist = distNum.toFixed(1);
-
-  // einfache angenommene Durchschnittsgeschwindigkeit (z.B. 60 km/h)
-  const v = 60;
-  const hoursFloat = distNum / v;
-  const hours = Math.floor(hoursFloat);
-  const minutes = Math.round((hoursFloat - hours) * 60);
-  const durationStr = hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`;
 
   const useSack = sackFilterAktiv();
   const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
   const firmenPreis = firmeneintrag
     ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
     : 0;
+
+  // ---- 1. Versuch: echte Straßenroute über OSRM ----
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("OSRM HTTP " + res.status);
+    const data = await res.json();
+    if(!data.routes || !data.routes.length) throw new Error("Keine Route");
+
+    const route = data.routes[0];
+    const distKm = route.distance/1000;
+    const dist = distKm.toFixed(1);
+    const durationMin = route.duration/60;
+    const hours = Math.floor(durationMin/60);
+    const minutes = Math.round(durationMin%60);
+    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+    const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+
+    const preisProKm = distKm < 250 ? 2.15 : 1.85;
+    const teilstrecke = distKm / 24;
+    const berechnung = teilstrecke * preisProKm;
+    const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
+
+    routeLine = L.polyline(coords,{
+      color:'blue',
+      weight:5,
+      opacity:0.8
+    }).addTo(map);
+
+    const mid = coords[Math.floor(coords.length/2)];
+    L.popup().setLatLng(mid).setContent(`
+      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+      <b>Entfernung:</b> ${dist} km (Straße)<br>
+      <b>Dauer:</b> ${durationStr}<br>
+      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+      <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+    `).openOn(map);
+    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
+    return; // OSRM erfolgreich → fertig
+  } catch(e){
+    console.warn("OSRM nicht verfügbar, benutze Luftlinie:", e);
+  }
+
+  // ---- 2. Fallback: Luftlinie (gepunktet) ----
+  const distNum = berechneEntfernungKm(a.coord, b.coord);
+  const dist = distNum.toFixed(1);
+
+  const v = 60; // km/h angenommen
+  const hoursFloat = distNum / v;
+  const hours = Math.floor(hoursFloat);
+  const minutes = Math.round((hoursFloat - hours) * 60);
+  const durationStr = hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`;
 
   const preisProKm = distNum < 250 ? 2.15 : 1.85;
   const teilstrecke = distNum / 24;
@@ -832,11 +875,12 @@ function showRoute(a,b){
 
   L.popup().setLatLng([midLat, midLon]).setContent(`
     <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-    <b>Entfernung:</b> ${dist} km<br>
+    <b>Entfernung:</b> ${dist} km (Luftlinie, geschätzt)</b><br>
     <b>Dauer (geschätzt):</b> ${durationStr}<br>
     <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
     <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
-    <b>Gesamtkosten (geschätzt):</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+    <b>Gesamtkosten (geschätzt):</b> <span style="color:green;font-size:1.1em">${gesamt} €</span><br>
+    <small>OSRM-Routingdienst war nicht erreichbar – daher nur Luftlinie.</small>
   `).openOn(map);
 
   map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
