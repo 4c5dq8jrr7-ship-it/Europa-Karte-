@@ -435,10 +435,18 @@ async function showRoute(a,b){
   clearRoute();
 
   const useSack=sackFilterAktiv();
-  const firmeneintrag=werke.find(w=>w.firma===a.label || w.firma===b.label);
-  const firmenPreis=firmeneintrag
-    ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
-    : 0;
+
+  // *** NEU: Preis nur, wenn a ODER b ein Werk ist ***
+  let firmenPreis = 0;
+  const startWerk = werke.find(w => w.firma === a.label);
+  if (startWerk) {
+    firmenPreis = useSack ? startWerk.preisSack : startWerk.preis;
+  } else {
+    const endWerk = werke.find(w => w.firma === b.label);
+    if (endWerk) {
+      firmenPreis = useSack ? endWerk.preisSack : endWerk.preis;
+    }
+  }
 
   const url =
     `https://api.openrouteservice.org/v2/directions/driving-car` +
@@ -471,7 +479,7 @@ async function showRoute(a,b){
       <b>Entfernung:</b> ${dist} km (Straße)<br>
       <b>Dauer:</b> ${durationStr}<br>
       <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-      <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+      <b>${firmenPreis ? (useSack ? "Sackware-Preis" : "Werkspreis") : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
       <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
     `).openOn(map);
 
@@ -482,8 +490,18 @@ async function showRoute(a,b){
   }
 }
 
-// Hintergrund-Klick: Route löschen
-map.on("click",clearRoute);
+// Hintergrund-Klick: Route löschen, aber NICHT bei Marker/Popup-Klick
+map.on("click",e=>{
+  const t = e.originalEvent && e.originalEvent.target;
+  if(t && t.closest && (
+      t.closest(".leaflet-marker-icon") ||
+      t.closest(".leaflet-popup") ||
+      t.closest(".leaflet-interactive")
+  )){
+    return;
+  }
+  clearRoute();
+});
 
 // -------- Karte aufbauen --------
 async function buildMap(){
