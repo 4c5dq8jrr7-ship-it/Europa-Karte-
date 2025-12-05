@@ -393,7 +393,7 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// Durchschnitt pro Land (Werkspreise, nur Werke MIT echtem Preis)
+// Durchschnitt pro Land
 function berechneDurchschnittProLand(){
   const sums   = {};
   const counts = {};
@@ -761,7 +761,7 @@ async function updateLayers(){
   }
 }
 
-// Klick: Marker-Position wird gespeichert
+// Klick: Marker-Position merken
 function handleMarkerClick(label, latlng){
   const coord = { lat: latlng.lat, lon: latlng.lng };
   selectedPoints.push({ label, coord });
@@ -772,61 +772,74 @@ function handleMarkerClick(label, latlng){
   }
 }
 
-async function showRoute(a,b){
-  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+// Entfernung in km (Haversine)
+function berechneEntfernungKm(aCoord, bCoord){
+  const R = 6371;
+  const toRad = deg => deg * Math.PI / 180;
+  const dLat = toRad(bCoord.lat - aCoord.lat);
+  const dLon = toRad(bCoord.lon - aCoord.lon);
+  const lat1 = toRad(aCoord.lat);
+  const lat2 = toRad(bCoord.lat);
 
+  const h = Math.sin(dLat/2)**2 +
+            Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  return R * c;
+}
+
+// Nur interne Berechnung, keine externe Routing-API
+function showRoute(a,b){
   if(routeLine) {
     map.removeLayer(routeLine);
     routeLine = null;
   }
 
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("OSRM HTTP-Fehler " + res.status);
-    const data = await res.json();
-    if(!data.routes || !data.routes.length) throw new Error("Keine Route gefunden");
+  const distNum = berechneEntfernungKm(a.coord, b.coord);
+  const dist = distNum.toFixed(1);
 
-    const route = data.routes[0];
-    const distKm = route.distance/1000;
-    const dist = distKm.toFixed(1);
-    const durationMin = route.duration/60;
-    const hours = Math.floor(durationMin/60);
-    const minutes = Math.round(durationMin%60);
-    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
-    const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+  // einfache angenommene Durchschnittsgeschwindigkeit (z.B. 60 km/h)
+  const v = 60;
+  const hoursFloat = distNum / v;
+  const hours = Math.floor(hoursFloat);
+  const minutes = Math.round((hoursFloat - hours) * 60);
+  const durationStr = hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`;
 
-    const useSack = sackFilterAktiv();
-    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
-    const firmenPreis = firmeneintrag
-      ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
-      : 0;
+  const useSack = sackFilterAktiv();
+  const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+  const firmenPreis = firmeneintrag
+    ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
+    : 0;
 
-    const preisProKm = distKm < 250 ? 2.15 : 1.85;
-    const teilstrecke = distKm / 24;
-    const berechnung = teilstrecke * preisProKm;
-    const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
+  const preisProKm = distNum < 250 ? 2.15 : 1.85;
+  const teilstrecke = distNum / 24;
+  const berechnung = teilstrecke * preisProKm;
+  const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
-    routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
-    const mid = coords[Math.floor(coords.length/2)];
-    L.popup().setLatLng(mid).setContent(`
-      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Entfernung:</b> ${dist} km (Straße)<br>
-      <b>Dauer:</b> ${durationStr}<br>
-      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-      <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
-      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
-    `).openOn(map);
-    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-  } catch (e) {
-    console.warn("OSRM Fehler / keine Route:", e);
-    const midLat = (a.coord.lat + b.coord.lat)/2;
-    const midLon = (a.coord.lon + b.coord.lon)/2;
-    L.popup().setLatLng([midLat, midLon]).setContent(`
-      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Es konnte keine Straßenroute berechnet werden.</b><br>
-      <small>OSRM-Routingdienst nicht erreichbar oder keine Verbindung zwischen Punkten.</small>
-    `).openOn(map);
-  }
+  const coords = [
+    [a.coord.lat, a.coord.lon],
+    [b.coord.lat, b.coord.lon]
+  ];
+
+  routeLine = L.polyline(coords,{
+    color:'blue',
+    weight:4,
+    opacity:0.9,
+    dashArray:'8 8'
+  }).addTo(map);
+
+  const midLat = (a.coord.lat + b.coord.lat)/2;
+  const midLon = (a.coord.lon + b.coord.lon)/2;
+
+  L.popup().setLatLng([midLat, midLon]).setContent(`
+    <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+    <b>Entfernung:</b> ${dist} km<br>
+    <b>Dauer (geschätzt):</b> ${durationStr}<br>
+    <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+    <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+    <b>Gesamtkosten (geschätzt):</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+  `).openOn(map);
+
+  map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
 }
 
 map.on('click', (e) => {
